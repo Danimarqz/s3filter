@@ -13,9 +13,26 @@ function s3video_env(string $key, $default = null) {
 
     if ($cache === null) {
         $cache = [];
-        $envpath = __DIR__ . '/.env';
+        $paths = [];
+        $custompath = getenv('S3VIDEO_ENV_PATH');
 
-        if (is_readable($envpath)) {
+        if ($custompath) {
+            $paths[] = $custompath;
+        }
+
+        global $CFG;
+        if (!empty($CFG->dataroot)) {
+            $paths[] = rtrim($CFG->dataroot, '/\\') . '/cloudfront/.env';
+        }
+
+        foreach ($paths as $envpath) {
+            if (!is_string($envpath) || $envpath === '') {
+                continue;
+            }
+            if (!is_readable($envpath)) {
+                continue;
+            }
+
             $lines = file($envpath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             foreach ($lines as $line) {
                 $trimmed = trim($line);
@@ -28,6 +45,7 @@ function s3video_env(string $key, $default = null) {
                     $cache[$envkey] = $envvalue;
                 }
             }
+            break;
         }
     }
 
