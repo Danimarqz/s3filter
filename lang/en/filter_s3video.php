@@ -7,3 +7,4 @@ $string['tokeninvalid'] = 'This secure link has expired. Please open the video a
 $string['sessionconflict'] = 'You are currently logged in as {$a}. Log out from this browser before trying with a different user.';
 $string['logoutandretry'] = 'Log out and try again';
 $string['reopenthroughapp'] = 'Open the video from Moodle again to get a fresh link.';
+$string['missingfilename'] = 'The video identifier is missing. Please open this resource again from Moodle.';

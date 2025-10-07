@@ -3,9 +3,19 @@ require_once(__DIR__ . '/../../config.php');
 require_once($CFG->dirroot . '/filter/s3video/lib.php');
 
 $tokenprovided = false;
-$filename = required_param('f', PARAM_ALPHANUMEXT);
+$filename = optional_param('f', null, PARAM_ALPHANUMEXT);
 $token = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
+
+if (empty($filename)) {
+    http_response_code(400);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>' .
+        get_string('pluginname', 'filter_s3video') . '</title><style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff;}a{color:#4fc3f7;}</style></head><body>';
+    echo '<p>' . get_string('missingfilename', 'filter_s3video') . '</p>';
+    echo '</body></html>';
+    exit;
+}
 
 $ip = s3video_get_request_ip();
 $authorized = false;

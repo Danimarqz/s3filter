@@ -7,3 +7,4 @@ $string['tokeninvalid'] = 'Este enlace seguro ha caducado. Vuelve a abrir el vid
 $string['sessionconflict'] = 'Ahora estas conectado como {$a}. Cierra la sesion en este navegador antes de usar otra cuenta.';
 $string['logoutandretry'] = 'Cerrar sesion y reintentar';
 $string['reopenthroughapp'] = 'Vuelve a abrir el video desde Moodle para generar un enlace nuevo.';
+$string['missingfilename'] = 'Falta el identificador del video. Vuelve a abrir este recurso desde Moodle.';

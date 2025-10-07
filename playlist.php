@@ -5,12 +5,19 @@ require_once($CFG->dirroot . '/lib/aws-sdk/src/CloudFront/UrlSigner.php');
 
 use Aws\CloudFront\UrlSigner;
 
-$filename = required_param('f', PARAM_ALPHANUMEXT);
+$filename = optional_param('f', null, PARAM_ALPHANUMEXT);
 $token = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
 
+if (empty($filename)) {
+    http_response_code(400);
+    echo "Error: " . get_string('missingfilename', 'filter_s3video');
+    exit;
+}
+
 $ip = s3video_get_request_ip();
 $authorized = false;
+$tokenprovided = false;
 
 if ($token && $expires) {
     $tokenprovided = true;
@@ -26,7 +33,7 @@ if (!$authorized) {
 if (!$authorized) {
     http_response_code(403);
     if ($tokenprovided ?? false) {
-        echo "#EXTM3U\n# Error: " . get_string('tokeninvalid', 'filter_s3video');
+        echo "# Error: " . get_string('tokeninvalid', 'filter_s3video');
         if (isloggedin() && !isguestuser()) {
             global $USER;
             $username = format_string(fullname($USER, true));
@@ -35,7 +42,7 @@ if (!$authorized) {
             echo "\n# " . get_string('reopenthroughapp', 'filter_s3video');
         }
     } else {
-        echo "#EXTM3U\n# Error: Acceso no autorizado.";
+        echo "# Error: Acceso no autorizado.";
     }
     exit;
 }
@@ -59,7 +66,7 @@ try {
     }
 } catch (Exception $e) {
     http_response_code(502);
-    echo "#EXTM3U\n# Error: " . $e->getMessage();
+    echo "# Error: " . $e->getMessage();
     exit;
 }
 
