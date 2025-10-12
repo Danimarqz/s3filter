@@ -2,37 +2,46 @@
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->dirroot . '/filter/s3video/lib.php');
 
-$tokenprovided = false;
-$filename = optional_param('f', null, PARAM_ALPHANUMEXT);
-$token = optional_param('t', null, PARAM_ALPHANUMEXT);
+//  parámetros 
+$rawf    = optional_param('f', null, PARAM_RAW_TRIMMED);
+$token   = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
 
-if (empty($filename)) {
+if (empty($rawf)) {
     http_response_code(400);
     header('Content-Type: text/html; charset=utf-8');
     echo '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>' .
-        get_string('pluginname', 'filter_s3video') . '</title><style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff;}a{color:#4fc3f7;}</style></head><body>';
+        get_string('pluginname', 'filter_s3video') .
+        '</title><style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff;}a{color:#4fc3f7;}</style></head><body>';
     echo '<p>' . get_string('missingfilename', 'filter_s3video') . '</p>';
     echo '</body></html>';
     exit;
 }
 
+//  normalizar ruta 
+$filename = urldecode($rawf);
+$filename = str_replace('\\', '/', $filename);
+$filename = preg_replace('#/+#', '/', $filename);
+$filename = trim($filename, '/');
+
 $ip = s3video_get_request_ip();
 $authorized = false;
+$tokenprovided = false;
 
+//  validar token con la ruta decodificada 
 if ($token && $expires) {
     $tokenprovided = true;
-    $authorized = s3video_validate_token($filename, $token, (int) $expires, $ip);
+    $authorized = s3video_validate_token($filename, $token, (int)$expires, $ip);
 }
 
-if (!$authorized) {
-    if (isloggedin() && !isguestuser()) {
-        $authorized = true;
-        $token = null;
-        $expires = null;
-    }
+// fallback para usuarios logueados
+if (!$authorized && isloggedin() && !isguestuser()) {
+    $authorized = true;
+    $token = null;
+    $expires = null;
 }
 
+//  acceso denegado 
 if (!$authorized) {
     http_response_code(403);
     header('Content-Type: text/html; charset=utf-8');
@@ -54,7 +63,8 @@ if (!$authorized) {
     }
 
     echo '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>' .
-        get_string('pluginname', 'filter_s3video') . '</title><style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff;}a{color:#4fc3f7;}</style></head><body>';
+        get_string('pluginname', 'filter_s3video') .
+        '</title><style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff;}a{color:#4fc3f7;}</style></head><body>';
     foreach ($messages as $message) {
         echo '<p>' . $message . '</p>';
     }
@@ -62,13 +72,11 @@ if (!$authorized) {
     exit;
 }
 
-$playeroptions = [
-    'forceplayer' => true,
-];
-
+//  construir opciones del reproductor 
+$playeroptions = ['forceplayer' => true];
 if ($token && $expires) {
     $playeroptions['token'] = $token;
-    $playeroptions['expires'] = (int) $expires;
+    $playeroptions['expires'] = (int)$expires;
 }
 ?>
 <!DOCTYPE html>

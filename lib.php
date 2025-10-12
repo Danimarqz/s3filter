@@ -193,7 +193,9 @@ function s3video_player(string $filename, array $options = []): string {
         $playlistparams['t'] = $options['token'];
         $playlistparams['e'] = (int) $options['expires'];
     }
+    $playlistparams['f'] = rawurlencode($filename);
     $playlist_url = $CFG->wwwroot . '/filter/s3video/playlist.php?' . http_build_query($playlistparams);
+
 
     if ($is_mobile_app) {
         $tokenttl = (int) s3video_env('S3VIDEO_TOKEN_TTL', 300);
@@ -203,7 +205,7 @@ function s3video_player(string $filename, array $options = []): string {
         $token = s3video_generate_token($filename, $expires, $ip);
 
         $iframeparams = [
-            'f' => $filename,
+            'f' => rawurlencode($filename),
             't' => $token,
             'e' => $expires,
         ];
@@ -227,7 +229,7 @@ function s3video_player(string $filename, array $options = []): string {
     HTML;
     }
 
-    $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', $filename);
+    $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
     $escapedid = 'vjs_' . $escapedid;
 
     $html = <<<HTML
