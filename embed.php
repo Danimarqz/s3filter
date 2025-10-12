@@ -27,6 +27,7 @@ $filename = trim($filename, '/');
 $ip = s3video_get_request_ip();
 $authorized = false;
 $tokenprovided = false;
+$manualenrolment = null;
 
 //  validar token con la ruta decodificada 
 if ($token && $expires) {
@@ -36,9 +37,13 @@ if ($token && $expires) {
 
 // fallback para usuarios logueados
 if (!$authorized && isloggedin() && !isguestuser()) {
-    $authorized = true;
-    $token = null;
-    $expires = null;
+    global $USER;
+    $manualenrolment = s3video_user_has_manual_enrolment($USER->id);
+    if ($manualenrolment) {
+        $authorized = true;
+        $token = null;
+        $expires = null;
+    }
 }
 
 //  acceso denegado 
@@ -51,7 +56,9 @@ if (!$authorized) {
         $messages[] = get_string('tokeninvalid', 'filter_s3video');
     }
 
-    if (isloggedin() && !isguestuser()) {
+    if ($manualenrolment === false) {
+        $messages[] = get_string('manualenrolrequired', 'filter_s3video');
+    } elseif (isloggedin() && !isguestuser()) {
         global $USER;
         $username = format_string(fullname($USER, true));
         $messages[] = get_string('sessionconflict', 'filter_s3video', $username);

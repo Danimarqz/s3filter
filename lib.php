@@ -1,6 +1,9 @@
 <?php
 defined('MOODLE_INTERNAL') || die();
 
+global $CFG;
+require_once($CFG->dirroot . '/enrol/locallib.php');
+
 /**
  * Cached loader for values stored in .env or environment variables.
  *
@@ -105,6 +108,48 @@ function s3video_get_request_ip(): string {
     }
 
     return '0.0.0.0';
+}
+
+/**
+ * Checks whether the user has an active manual enrolment in any course.
+ *
+ * @param int $userid
+ * @return bool
+ */
+function s3video_user_has_manual_enrolment(int $userid): bool {
+    global $DB;
+
+    static $cache = [];
+
+    if ($userid <= 0) {
+        return false;
+    }
+
+    if (array_key_exists($userid, $cache)) {
+        return $cache[$userid];
+    }
+
+    $now = time();
+    $sql = "SELECT 1
+              FROM {user_enrolments} ue
+              JOIN {enrol} e ON e.id = ue.enrolid
+             WHERE ue.userid = :userid
+               AND e.enrol = :manual
+               AND ue.status = :userstatus
+               AND e.status = :enrolstatus
+               AND (ue.timeend = 0 OR ue.timeend > :now)
+               AND (ue.timestart = 0 OR ue.timestart <= :now)";
+
+    $exists = $DB->record_exists_sql($sql, [
+        'userid' => $userid,
+        'manual' => 'manual',
+        'userstatus' => ENROL_USER_ACTIVE,
+        'enrolstatus' => ENROL_INSTANCE_ENABLED,
+        'now' => $now,
+    ]);
+
+    $cache[$userid] = $exists;
+    return $exists;
 }
 
 /**

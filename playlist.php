@@ -47,17 +47,26 @@ $key = "{$path}/{$basename}.m3u8";
 $ip = s3video_get_request_ip();
 $authorized = false;
 $tokenprovided = false;
+$manualenrolment = null;
 
 if ($token && $expires) {
     $tokenprovided = true;
     $authorized = s3video_validate_token($path, $token, (int)$expires, $ip);
 }
 if (!$authorized && isloggedin() && !isguestuser()) {
-    $authorized = true;
+    global $USER;
+    $manualenrolment = s3video_user_has_manual_enrolment($USER->id);
+    if ($manualenrolment) {
+        $authorized = true;
+    }
 }
 if (!$authorized) {
     http_response_code(403);
-    echo "# Error: acceso no autorizado.";
+    if ($manualenrolment === false) {
+        echo "# Error: se requiere una matrícula manual activa.";
+    } else {
+        echo "# Error: acceso no autorizado.";
+    }
     exit;
 }
 

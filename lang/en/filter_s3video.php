@@ -8,3 +8,4 @@ $string['sessionconflict'] = 'You are currently logged in as {$a}. Log out from 
 $string['logoutandretry'] = 'Log out and try again';
 $string['reopenthroughapp'] = 'Open the video from Moodle again to get a fresh link.';
 $string['missingfilename'] = 'The video identifier is missing. Please open this resource again from Moodle.';
+$string['manualenrolrequired'] = 'Your account must have an active manual enrolment to access this video.';

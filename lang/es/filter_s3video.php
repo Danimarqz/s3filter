@@ -8,3 +8,4 @@ $string['sessionconflict'] = 'Ahora estas conectado como {$a}. Cierra la sesion 
 $string['logoutandretry'] = 'Cerrar sesion y reintentar';
 $string['reopenthroughapp'] = 'Vuelve a abrir el video desde Moodle para generar un enlace nuevo.';
 $string['missingfilename'] = 'Falta el identificador del video. Vuelve a abrir este recurso desde Moodle.';
+$string['manualenrolrequired'] = 'Tu cuenta debe tener una matrícula manual activa para acceder a este vídeo.';
