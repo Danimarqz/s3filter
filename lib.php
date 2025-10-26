@@ -126,34 +126,36 @@ function s3video_user_has_manual_enrolment(int $userid): bool {
     if ($userid <= 0) {
         return false;
     }
-
     if (array_key_exists($userid, $cache)) {
         return $cache[$userid];
     }
 
     $now = time();
+    $sql = "SELECT 1
+              FROM {user_enrolments} ue
+              JOIN {enrol} e ON e.id = ue.enrolid
+             WHERE ue.userid = :userid
+               AND e.enrol = :manual
+               AND ue.status = :userstatus
+               AND e.status = :enrolstatus
+               AND (ue.timeend = 0 OR ue.timeend > :nowupper)
+               AND (ue.timestart = 0 OR ue.timestart <= :nowlower)
+             LIMIT 1";
+
     $params = [
         'userid'      => $userid,
         'manual'      => 'manual',
         'userstatus'  => ENROL_USER_ACTIVE,
         'enrolstatus' => ENROL_INSTANCE_ENABLED,
-        'now'         => $now,
+        'nowupper'    => $now,
+        'nowlower'    => $now,
     ];
 
-    $sql = "SELECT 1
-                FROM {user_enrolments} ue
-                JOIN {enrol} e ON e.id = ue.enrolid
-                WHERE ue.userid = :userid
-                AND e.enrol = :manual
-                AND ue.status = :userstatus
-                AND e.status = :enrolstatus
-                AND (ue.timeend = 0 OR ue.timeend > :now)
-                AND (ue.timestart = 0 OR ue.timestart <= :now)
-                LIMIT 1";
-
-    $cache[$userid] = $DB->record_exists_sql($sql, $params);
-    return $cache[$userid];
+    $exists = $DB->get_field_sql($sql, $params) !== false;
+    $cache[$userid] = $exists;
+    return $exists;
 }
+
 
 
 /**
@@ -225,7 +227,7 @@ function s3video_validate_token(string $filename, string $token, int $expires, s
  * @throws coding_exception
  */
 function s3video_player(string $filename, array $options = []): string {
-    global $CFG, $PAGE;
+    global $CFG;
 
     $defaults = [
         'durationseconds' => 600,
@@ -238,6 +240,7 @@ function s3video_player(string $filename, array $options = []): string {
 
     $cacheable = empty($options['token']) && empty($options['expires']) && empty($options['forceplayer']);
     static $rendercache = [];
+    static $assetsprinted = false;
 
     $is_mobile_app = s3video_is_mobile_app($options['forceplayer']);
     if ($is_mobile_app) {
@@ -253,7 +256,8 @@ function s3video_player(string $filename, array $options = []): string {
         $playlistparams['t'] = $options['token'];
         $playlistparams['e'] = (int) $options['expires'];
     }
-    $playlisturl = new moodle_url('/filter/s3video/playlist.php', $playlistparams);
+    $playlistquery = http_build_query($playlistparams, '', '&', PHP_QUERY_RFC3986);
+    $playlisturl = $CFG->wwwroot . '/filter/s3video/playlist.php' . ($playlistquery ? ('?' . $playlistquery) : '');
 
     if ($is_mobile_app) {
         $tokenttl = (int) s3video_env('S3VIDEO_TOKEN_TTL', 300);
@@ -267,12 +271,13 @@ function s3video_player(string $filename, array $options = []): string {
             't' => $token,
             'e' => $expires,
         ];
-        $iframeurl = new moodle_url('/filter/s3video/embed.php', $iframeparams);
+        $iframequery = http_build_query($iframeparams, '', '&', PHP_QUERY_RFC3986);
+        $iframeurl = $CFG->wwwroot . '/filter/s3video/embed.php' . ($iframequery ? ('?' . $iframequery) : '');
 
         $buttontext = get_string('openvideo', 'filter_s3video');
         $infotext = get_string('openvideoinfo', 'filter_s3video');
 
-        $iframehref = s($iframeurl->out(false));
+        $iframehref = s($iframeurl);
 
         $html = <<<HTML
     <div style="text-align:center; padding:1em;">
@@ -291,19 +296,13 @@ function s3video_player(string $filename, array $options = []): string {
         return $html;
     }
 
-    static $assetsregistered = false;
     $assets = '';
-    if (!$assetsregistered) {
-        $assetsregistered = true;
-        if (isset($PAGE) && isset($PAGE->requires)) {
-            $PAGE->requires->css(new moodle_url('https://vjs.zencdn.net/8.16.1/video-js.css'));
-            $PAGE->requires->js(new moodle_url('https://vjs.zencdn.net/8.16.1/video.min.js'));
-        } else {
-            $assets = <<<HTML
+    if (!$assetsprinted) {
+        $assetsprinted = true;
+        $assets = <<<HTML
 <link href="https://vjs.zencdn.net/8.16.1/video-js.css" rel="stylesheet" />
 <script src="https://vjs.zencdn.net/8.16.1/video.min.js"></script>
 HTML;
-        }
     }
 
     $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
@@ -327,7 +326,7 @@ HTML;
 
     $setupjson = json_encode($setupconfig, JSON_UNESCAPED_SLASHES);
     $setupattr = s($setupjson);
-    $playlistsrc = s($playlisturl->out(false));
+    $playlistsrc = s($playlisturl);
 
     $assetsmarkup = $assets === '' ? '' : $assets . "\n";
 
