@@ -43,7 +43,7 @@ if (!$authorized && isloggedin() && !isguestuser()) {
         $authorized = true;
         $token = null;
         $expires = null;
-    }
+}
 }
 
 //  acceso denegado 

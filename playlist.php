@@ -98,7 +98,8 @@ if ($m3u8content === false) {
 
 //  reescribir segmentos relativos 
 $basedir = trim(dirname($key), '/');
-$lines = preg_split("/\r\n|\n|\r/", $m3u8content);
+$normalizedcontent = str_replace(["\r\n", "\r"], "\n", $m3u8content);
+$lines = explode("\n", $normalizedcontent);
 $rewritten = [];
 
 foreach ($lines as $line) {
@@ -109,7 +110,7 @@ foreach ($lines as $line) {
         continue;
     }
 
-    if (preg_match('~^https?://~i', $trim)) {
+    if (strncasecmp($trim, 'http://', 7) === 0 || strncasecmp($trim, 'https://', 8) === 0) {
         // Segmento absoluto → refirmar
         $segmenturl = strtok($trim, '?');
         $rewritten[] = $signer->getSignedUrl($segmenturl, $expiresat);

@@ -11,7 +11,9 @@ class text_filter extends \moodle_text_filter {
             return $text;
         }
 
-        return preg_replace_callback('/\[s3:(.+?)\]/', function ($matches) {
+        static $pattern = '/\[s3:([^\]]+)\]/';
+
+        return preg_replace_callback($pattern, function ($matches) {
             $filename = trim($matches[1]);
             if (empty($filename)) {
                 return '';

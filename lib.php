@@ -53,10 +53,12 @@ function s3video_env(string $key, $default = null) {
     }
 
     if (array_key_exists($key, $cache)) {
-        return $cache[$key];
+        $cached = $cache[$key];
+        return $cached === false ? $default : $cached;
     }
 
     $value = getenv($key);
+    $cache[$key] = $value;
     return $value === false ? $default : $value;
 }
 
@@ -130,27 +132,29 @@ function s3video_user_has_manual_enrolment(int $userid): bool {
     }
 
     $now = time();
-    $sql = "SELECT 1
-              FROM {user_enrolments} ue
-              JOIN {enrol} e ON e.id = ue.enrolid
-             WHERE ue.userid = :userid
-               AND e.enrol = :manual
-               AND ue.status = :userstatus
-               AND e.status = :enrolstatus
-               AND (ue.timeend = 0 OR ue.timeend > :now)
-               AND (ue.timestart = 0 OR ue.timestart <= :now)";
-
-    $exists = $DB->record_exists_sql($sql, [
-        'userid' => $userid,
-        'manual' => 'manual',
-        'userstatus' => ENROL_USER_ACTIVE,
+    $params = [
+        'userid'      => $userid,
+        'manual'      => 'manual',
+        'userstatus'  => ENROL_USER_ACTIVE,
         'enrolstatus' => ENROL_INSTANCE_ENABLED,
-        'now' => $now,
-    ]);
+        'now'         => $now,
+    ];
 
-    $cache[$userid] = $exists;
-    return $exists;
+    $sql = "SELECT 1
+                FROM {user_enrolments} ue
+                JOIN {enrol} e ON e.id = ue.enrolid
+                WHERE ue.userid = :userid
+                AND e.enrol = :manual
+                AND ue.status = :userstatus
+                AND e.status = :enrolstatus
+                AND (ue.timeend = 0 OR ue.timeend > :now)
+                AND (ue.timestart = 0 OR ue.timestart <= :now)
+                LIMIT 1";
+
+    $cache[$userid] = $DB->record_exists_sql($sql, $params);
+    return $cache[$userid];
 }
+
 
 /**
  * Checks if the current user agent belongs to Moodle App.
@@ -221,26 +225,35 @@ function s3video_validate_token(string $filename, string $token, int $expires, s
  * @throws coding_exception
  */
 function s3video_player(string $filename, array $options = []): string {
-    global $CFG;
+    global $CFG, $PAGE;
 
     $defaults = [
         'durationseconds' => 600,
         'forceplayer' => false,
         'token' => null,
         'expires' => null,
+        'playbackrates' => [0.5, 0.75, 1, 1.25, 1.5, 2],
     ];
     $options = array_merge($defaults, $options);
 
+    $cacheable = empty($options['token']) && empty($options['expires']) && empty($options['forceplayer']);
+    static $rendercache = [];
+
     $is_mobile_app = s3video_is_mobile_app($options['forceplayer']);
+    if ($is_mobile_app) {
+        $cacheable = false;
+    }
+
+    if ($cacheable && isset($rendercache[$filename])) {
+        return $rendercache[$filename];
+    }
 
     $playlistparams = ['f' => $filename];
     if (!empty($options['token']) && !empty($options['expires'])) {
         $playlistparams['t'] = $options['token'];
         $playlistparams['e'] = (int) $options['expires'];
     }
-    $playlistparams['f'] = rawurlencode($filename);
-    $playlist_url = $CFG->wwwroot . '/filter/s3video/playlist.php?' . http_build_query($playlistparams);
-
+    $playlisturl = new moodle_url('/filter/s3video/playlist.php', $playlistparams);
 
     if ($is_mobile_app) {
         $tokenttl = (int) s3video_env('S3VIDEO_TOKEN_TTL', 300);
@@ -250,18 +263,20 @@ function s3video_player(string $filename, array $options = []): string {
         $token = s3video_generate_token($filename, $expires, $ip);
 
         $iframeparams = [
-            'f' => rawurlencode($filename),
+            'f' => $filename,
             't' => $token,
             'e' => $expires,
         ];
-        $iframe_url = $CFG->wwwroot . '/filter/s3video/embed.php?' . http_build_query($iframeparams);
+        $iframeurl = new moodle_url('/filter/s3video/embed.php', $iframeparams);
 
         $buttontext = get_string('openvideo', 'filter_s3video');
         $infotext = get_string('openvideoinfo', 'filter_s3video');
 
-        return <<<HTML
+        $iframehref = s($iframeurl->out(false));
+
+        $html = <<<HTML
     <div style="text-align:center; padding:1em;">
-    <a href="{$iframe_url}" target="_blank"
+    <a href="{$iframehref}" target="_blank"
         style="display:inline-block; background:#1976d2; color:#fff;
                 padding:0.8em 1.2em; border-radius:6px;
                 font-weight:600; text-decoration:none;">
@@ -272,24 +287,70 @@ function s3video_player(string $filename, array $options = []): string {
     </p>
     </div>
     HTML;
+
+        return $html;
+    }
+
+    static $assetsregistered = false;
+    $assets = '';
+    if (!$assetsregistered) {
+        $assetsregistered = true;
+        if (isset($PAGE) && isset($PAGE->requires)) {
+            $PAGE->requires->css(new moodle_url('https://vjs.zencdn.net/8.16.1/video-js.css'));
+            $PAGE->requires->js(new moodle_url('https://vjs.zencdn.net/8.16.1/video.min.js'));
+        } else {
+            $assets = <<<HTML
+<link href="https://vjs.zencdn.net/8.16.1/video-js.css" rel="stylesheet" />
+<script src="https://vjs.zencdn.net/8.16.1/video.min.js"></script>
+HTML;
+        }
     }
 
     $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
     $escapedid = 'vjs_' . $escapedid;
+    $setupconfig = ['fluid' => true];
+
+    if (!empty($options['playbackrates']) && is_array($options['playbackrates'])) {
+        $normalized = [];
+        foreach ($options['playbackrates'] as $rate) {
+            $rate = (float) $rate;
+            if ($rate > 0) {
+                $normalized[] = $rate;
+            }
+        }
+        if (!empty($normalized)) {
+            $normalized = array_values(array_unique($normalized));
+            sort($normalized, SORT_NUMERIC);
+            $setupconfig['playbackRates'] = $normalized;
+        }
+    }
+
+    $setupjson = json_encode($setupconfig, JSON_UNESCAPED_SLASHES);
+    $setupattr = s($setupjson);
+    $playlistsrc = s($playlisturl->out(false));
+
+    $assetsmarkup = $assets === '' ? '' : $assets . "\n";
 
     $html = <<<HTML
-<link href="https://vjs.zencdn.net/8.16.1/video-js.css" rel="stylesheet" />
-<video id="{$escapedid}" class="video-js vjs-default-skin vjs-fluid"
-       controls preload="auto" data-setup='{"fluid": true}'>
-  <source src="{$playlist_url}" type="application/x-mpegURL">
+{$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin vjs-fluid"
+       controls preload="auto" data-setup='{$setupattr}'>
+  <source src="{$playlistsrc}" type="application/x-mpegURL">
 </video>
-<script src="https://vjs.zencdn.net/8.16.1/video.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  if (typeof videojs !== 'undefined') videojs('{$escapedid}');
+  if (typeof videojs !== 'undefined') {
+    const player = videojs('{$escapedid}');
+    player.ready(function() {
+      player.playbackRate(1); // velocidad inicial
+    });
+  }
 });
 </script>
 HTML;
+
+    if ($cacheable && $assets === '') {
+        $rendercache[$filename] = $html;
+    }
 
     return $html;
 }
