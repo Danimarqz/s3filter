@@ -89,7 +89,7 @@ $encode = function(string $p): string {
 $m3u8url = "https://{$cloudfrontdomain}/" . $encode($key);
 
 //  descargar playlist original firmada 
-$m3u8content = s3video_fetch_remote_signed($signer, $m3u8url, $expiresat);
+$m3u8content = s3video_fetch_remote_signed_with_retry($signer, $m3u8url, $expiresat);
 if ($m3u8content === false) {
     http_response_code(502);
     echo "# Error: no se pudo obtener la playlist.";
@@ -127,26 +127,4 @@ header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
 header('Cache-Control: private, max-age=60');
 echo implode("\n", $rewritten);
 
-/**
- * Descarga una URL firmada y devuelve el cuerpo o false.
- */
-function s3video_fetch_remote_signed(UrlSigner $signer, string $url, int $expiresat) {
-    $signed = $signer->getSignedUrl($url, $expiresat);
-    $ch = curl_init($signed);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT => 10,
-        CURLOPT_USERAGENT => 'Moodle-HLS-Proxy'
-    ]);
-    $body = curl_exec($ch);
-    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_errno($ch);
-    curl_close($ch);
 
-    if ($err !== 0 || $http >= 400 || stripos($body, '<Error>') !== false) {
-        return false;
-    }
-    return $body;
-}

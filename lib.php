@@ -353,3 +353,49 @@ HTML;
 
     return $html;
 }
+
+/**
+ * Fetches a signed URL with retries and logging.
+ *
+ * @param \Aws\CloudFront\UrlSigner $signer
+ * @param string $url
+ * @param int $expiresat
+ * @param int $retries
+ * @return string|false
+ */
+function s3video_fetch_remote_signed_with_retry($signer, string $url, int $expiresat, int $retries = 3) {
+    $attempt = 0;
+    while ($attempt < $retries) {
+        $attempt++;
+        $signed = $signer->getSignedUrl($url, $expiresat);
+        $ch = curl_init($signed);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_TIMEOUT => 15, // Increased timeout
+            CURLOPT_USERAGENT => 'Moodle-HLS-Proxy',
+            CURLOPT_FAILONERROR => true, // Treat 4xx/5xx as errors
+        ]);
+        
+        $body = curl_exec($ch);
+        $err  = curl_errno($ch);
+        $errmsg = curl_error($ch);
+        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($err === 0 && $http < 400 && stripos($body, '<Error>') === false) {
+            return $body;
+        }
+
+        // Log the failure
+        error_log("filter_s3video: Fetch attempt {$attempt}/{$retries} failed for URL [{$url}]. HTTP: {$http}. Curl Error: [{$err}] {$errmsg}");
+        
+        if ($attempt < $retries) {
+            sleep(1); // Wait a bit before retrying
+        }
+    }
+
+    error_log("filter_s3video: All {$retries} attempts failed for URL [{$url}].");
+    return false;
+}
