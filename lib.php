@@ -235,8 +235,10 @@ function s3video_player(string $filename, array $options = []): string {
         'token' => null,
         'expires' => null,
         'playbackrates' => [0.5, 0.75, 1, 1.25, 1.5, 2],
+        'audio' => false,
     ];
     $options = array_merge($defaults, $options);
+    $isaudio = !empty($options['audio']);
 
     $cacheable = empty($options['token']) && empty($options['expires']) && empty($options['forceplayer']);
     static $rendercache = [];
@@ -247,11 +249,15 @@ function s3video_player(string $filename, array $options = []): string {
         $cacheable = false;
     }
 
-    if ($cacheable && isset($rendercache[$filename])) {
-        return $rendercache[$filename];
+    $cachekey = ($isaudio ? 'a:' : 'v:') . $filename;
+    if ($cacheable && isset($rendercache[$cachekey])) {
+        return $rendercache[$cachekey];
     }
 
     $playlistparams = ['f' => $filename];
+    if ($isaudio) {
+        $playlistparams['a'] = 1;
+    }
     if (!empty($options['token']) && !empty($options['expires'])) {
         $playlistparams['t'] = $options['token'];
         $playlistparams['e'] = (int) $options['expires'];
@@ -271,6 +277,9 @@ function s3video_player(string $filename, array $options = []): string {
             't' => $token,
             'e' => $expires,
         ];
+        if ($isaudio) {
+            $iframeparams['a'] = 1;
+        }
         $iframequery = http_build_query($iframeparams, '', '&', PHP_QUERY_RFC3986);
         $iframeurl = $CFG->wwwroot . '/filter/s3video/embed.php' . ($iframequery ? ('?' . $iframequery) : '');
 
@@ -307,7 +316,7 @@ HTML;
 
     $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
     $escapedid = 'vjs_' . $escapedid;
-    $setupconfig = ['fluid' => true];
+    $setupconfig = $isaudio ? ['audioOnlyMode' => true] : ['fluid' => true];
 
     if (!empty($options['playbackrates']) && is_array($options['playbackrates'])) {
         $normalized = [];
@@ -329,9 +338,12 @@ HTML;
     $playlistsrc = s($playlisturl);
 
     $assetsmarkup = $assets === '' ? '' : $assets . "\n";
+    $vjsclass = $isaudio ? '' : ' vjs-fluid';
+    // audioOnlyMode colapsa sin ancho: forzar 100% y alto de la barra.
+    $vjsstyle = $isaudio ? ' style="width:100%;height:3em"' : '';
 
     $html = <<<HTML
-{$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin vjs-fluid"
+{$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}
        controls preload="auto" data-setup='{$setupattr}'>
   <source src="{$playlistsrc}" type="application/x-mpegURL">
 </video>
@@ -347,8 +359,39 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 HTML;
 
+    $tokenttl_btn = (int) s3video_env('S3VIDEO_TOKEN_TTL', 300);
+    $tokenttl_btn = max(60, $tokenttl_btn);
+    $expires_btn = time() + $tokenttl_btn;
+    $ip_btn = s3video_get_request_ip();
+    $token_btn = s3video_generate_token($filename, $expires_btn, $ip_btn);
+
+    $iframeparams_btn = [
+        'f' => $filename,
+        't' => $token_btn,
+        'e' => $expires_btn,
+    ];
+    if ($isaudio) {
+        $iframeparams_btn['a'] = 1;
+    }
+    $iframequery_btn = http_build_query($iframeparams_btn, '', '&', PHP_QUERY_RFC3986);
+    $iframeurl_btn = "{$CFG->wwwroot}/filter/s3video/embed.php" . ($iframequery_btn ? "?{$iframequery_btn}" : '');
+
+    $buttontext = get_string('openvideo', 'filter_s3video');
+    $iframehref_btn = s($iframeurl_btn);
+
+    $html .= <<<HTML
+<div style="text-align:center; padding:1em;">
+<a href="{$iframehref_btn}" target="_blank"
+    style="display:inline-block; background:#1976d2; color:#fff;
+            padding:0.8em 1.2em; border-radius:6px;
+            font-weight:600; text-decoration:none;">
+    {$buttontext}
+</a>
+</div>
+HTML;
+
     if ($cacheable && $assets === '') {
-        $rendercache[$filename] = $html;
+        $rendercache[$cachekey] = $html;
     }
 
     return $html;

@@ -19,6 +19,7 @@ use Aws\CloudFront\UrlSigner;
 $rawf    = optional_param('f', null, PARAM_RAW_TRIMMED);
 $token   = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
+$audio   = optional_param('a', 0, PARAM_INT);
 
 //  validación inicial 
 if (empty($rawf)) {
@@ -28,7 +29,7 @@ if (empty($rawf)) {
 }
 
 //  normalizar ruta 
-$path = urldecode($rawf);
+$path = $rawf;
 $path = str_replace('\\', '/', $path);
 $path = preg_replace('#/+#', '/', $path);
 $path = trim($path, '/');
@@ -41,7 +42,9 @@ if (strpos($path, '..') !== false) {
 
 //  construir clave final S3 
 $basename = basename($path);
-$key = "{$path}/{$basename}.m3u8";
+// audio/* CloudFront behavior enruta a bucket de audio; video usa raíz.
+$prefix = $audio ? 'audio/' : '';
+$key = "{$prefix}{$path}/{$basename}.m3u8";
 
 //  control de acceso 
 $ip = s3video_get_request_ip();
