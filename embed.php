@@ -6,6 +6,7 @@ require_once($CFG->dirroot . '/filter/s3video/lib.php');
 $rawf    = optional_param('f', null, PARAM_RAW_TRIMMED);
 $token   = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
+$audio   = optional_param('a', 0, PARAM_INT);
 
 if (empty($rawf)) {
     http_response_code(400);
@@ -19,7 +20,7 @@ if (empty($rawf)) {
 }
 
 //  normalizar ruta 
-$filename = urldecode($rawf);
+$filename = $rawf;
 $filename = str_replace('\\', '/', $filename);
 $filename = preg_replace('#/+#', '/', $filename);
 $filename = trim($filename, '/');
@@ -80,7 +81,7 @@ if (!$authorized) {
 }
 
 //  construir opciones del reproductor 
-$playeroptions = ['forceplayer' => true];
+$playeroptions = ['forceplayer' => true, 'audio' => (bool)$audio];
 if ($token && $expires) {
     $playeroptions['token'] = $token;
     $playeroptions['expires'] = (int)$expires;
