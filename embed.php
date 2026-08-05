@@ -1,78 +1,39 @@
 <?php
+/**
+ * Full-page player, opened in a new tab.
+ *
+ * Used by the "Abrir vídeo" button and by the Moodle mobile app, whose
+ * webview cannot run the inline player. It is a standalone page rather than
+ * an iframe on purpose: the token in the URL is single-purpose and the page
+ * renders nothing but the player.
+ *
+ * Access control is the same as playlist.php — a token that names the
+ * course, plus a live enrolment check — because this endpoint is reachable
+ * directly and must not be weaker than the one it links to.
+ *
+ * @package   filter_s3video
+ */
+
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->dirroot . '/filter/s3video/lib.php');
 
-//  parámetros 
-$rawf    = optional_param('f', null, PARAM_RAW_TRIMMED);
-$token   = optional_param('t', null, PARAM_ALPHANUMEXT);
+$rawf = optional_param('f', null, PARAM_RAW_TRIMMED);
+$token = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
-$audio   = optional_param('a', 0, PARAM_INT);
+$courseid = optional_param('c', 0, PARAM_INT);
+$audio = optional_param('a', 0, PARAM_INT);
 
-if (empty($rawf)) {
-    http_response_code(400);
+/**
+ * Renders a standalone dark page with one or more messages and stops.
+ */
+function s3video_embed_fail(int $status, array $messages): void {
+    http_response_code($status);
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>' .
-        get_string('pluginname', 'filter_s3video') .
-        '</title><style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff;}a{color:#4fc3f7;}</style></head><body>';
-    echo '<p>' . get_string('missingfilename', 'filter_s3video') . '</p>';
-    echo '</body></html>';
-    exit;
-}
-
-//  normalizar ruta 
-$filename = $rawf;
-$filename = str_replace('\\', '/', $filename);
-$filename = preg_replace('#/+#', '/', $filename);
-$filename = trim($filename, '/');
-
-$ip = s3video_get_request_ip();
-$authorized = false;
-$tokenprovided = false;
-$manualenrolment = null;
-
-//  validar token con la ruta decodificada 
-if ($token && $expires) {
-    $tokenprovided = true;
-    $authorized = s3video_validate_token($filename, $token, (int)$expires, $ip);
-}
-
-// fallback para usuarios logueados
-if (!$authorized && isloggedin() && !isguestuser()) {
-    global $USER;
-    $manualenrolment = s3video_user_has_manual_enrolment($USER->id);
-    if ($manualenrolment) {
-        $authorized = true;
-        $token = null;
-        $expires = null;
-}
-}
-
-//  acceso denegado 
-if (!$authorized) {
-    http_response_code(403);
-    header('Content-Type: text/html; charset=utf-8');
-
-    $messages = [];
-    if ($tokenprovided) {
-        $messages[] = get_string('tokeninvalid', 'filter_s3video');
-    }
-
-    if ($manualenrolment === false) {
-        $messages[] = get_string('manualenrolrequired', 'filter_s3video');
-    } elseif (isloggedin() && !isguestuser()) {
-        global $USER;
-        $username = format_string(fullname($USER, true));
-        $messages[] = get_string('sessionconflict', 'filter_s3video', $username);
-        $logouturl = new moodle_url('/login/logout.php', ['sesskey' => sesskey()]);
-        $messages[] = '<p><a href="' . s($logouturl->out(false)) . '">' .
-            get_string('logoutandretry', 'filter_s3video') . '</a></p>';
-    } else {
-        $messages[] = get_string('reopenthroughapp', 'filter_s3video');
-    }
-
-    echo '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>' .
-        get_string('pluginname', 'filter_s3video') .
-        '</title><style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff;}a{color:#4fc3f7;}</style></head><body>';
+    echo '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<title>' . s(get_string('pluginname', 'filter_s3video')) . '</title>'
+        . '<style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff}'
+        . 'a{color:#4fc3f7}</style></head><body>';
     foreach ($messages as $message) {
         echo '<p>' . $message . '</p>';
     }
@@ -80,19 +41,58 @@ if (!$authorized) {
     exit;
 }
 
-//  construir opciones del reproductor 
-$playeroptions = ['forceplayer' => true, 'audio' => (bool)$audio];
-if ($token && $expires) {
-    $playeroptions['token'] = $token;
-    $playeroptions['expires'] = (int)$expires;
+if (empty($rawf)) {
+    s3video_embed_fail(400, [s(get_string('missingfilename', 'filter_s3video'))]);
 }
+
+$filename = trim(preg_replace('#/+#', '/', str_replace('\\', '/', $rawf)), '/');
+if ($filename === '' || strpos($filename, '..') !== false) {
+    s3video_embed_fail(400, [s(get_string('missingfilename', 'filter_s3video'))]);
+}
+
+if (empty($token) || empty($expires)) {
+    s3video_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_s3video'))]);
+}
+
+$ip = s3video_get_request_ip();
+if (!s3video_validate_token($filename, $token, (int) $expires, (int) $courseid, $ip)) {
+    s3video_embed_fail(403, [s(get_string('tokeninvalid', 'filter_s3video'))]);
+}
+
+if ($courseid > 0) {
+    if (!s3video_user_can_access_course((int) $courseid)) {
+        $messages = [s(get_string('notenrolled', 'filter_s3video'))];
+        if (isloggedin() && !isguestuser()) {
+            $messages[] = s(get_string('sessionconflict', 'filter_s3video', format_string(fullname($USER, true))));
+            $logouturl = new moodle_url('/login/logout.php', ['sesskey' => sesskey()]);
+            $messages[] = '<a href="' . s($logouturl->out(false)) . '">'
+                . s(get_string('logoutandretry', 'filter_s3video')) . '</a>';
+        }
+        s3video_embed_fail(403, $messages);
+    }
+} else {
+    if (s3video_require_course()) {
+        s3video_embed_fail(403, [s(get_string('nocoursecontext', 'filter_s3video'))]);
+    }
+    if (!isloggedin() || isguestuser()) {
+        s3video_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_s3video'))]);
+    }
+}
+
+$playeroptions = [
+    'forceplayer' => true,
+    'audio' => (bool) $audio,
+    'courseid' => (int) $courseid,
+    'token' => $token,
+    'expires' => (int) $expires,
+];
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Video</title>
+  <title><?php echo s(get_string('pluginname', 'filter_s3video')); ?></title>
   <style>
     html,body{
       margin:0;padding:0;background:#000;color:#fff;
