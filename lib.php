@@ -418,8 +418,15 @@ function s3video_encode_key(string $path): string {
  * site's tenant API key. Called only from events.php, server-side: the API
  * key must never appear in a page the learner's browser can read.
  *
+ * Fire-and-forget via a detached curl: a slow or unreachable Reelo backend
+ * must not pin a PHP-FPM worker for seconds per heartbeat (one flush per
+ * viewer every 15s is self-inflicted DoS if the relay blocks). Credentials
+ * and payload go in 0600 temp files, never on the curl command line (ps
+ * would expose them). Falls back to a short synchronous POST if popen is
+ * disabled.
+ *
  * @param array $payload {subject, events:[{videoPath,type,positionSeconds,ts}]}
- * @return bool true when Reelo accepted the batch (2xx)
+ * @return bool true when the relay was dispatched (not necessarily delivered)
  */
 function s3video_post_events(array $payload): bool {
     $apikey = (string) s3video_setting('apikey', '');
@@ -428,21 +435,59 @@ function s3video_post_events(array $payload): bool {
         return false;
     }
 
-    $curl = new \curl();
-    $curl->setHeader([
-        'Authorization: Bearer ' . $apikey,
-        'Content-Type: application/json',
-        'Accept: application/json',
-    ]);
-    $curl->post(rtrim(S3VIDEO_API_URL, '/') . '/events', json_encode($payload), [
-        'CURLOPT_TIMEOUT' => 5,
-        'CURLOPT_CONNECTTIMEOUT' => 3,
-        'CURLOPT_FOLLOWLOCATION' => 0,
-    ]);
+    $endpoint = rtrim(S3VIDEO_API_URL, '/') . '/events';
+    $json = json_encode($payload);
+    if ($json === false) {
+        return false;
+    }
 
-    $info = $curl->get_info();
-    $httpcode = (int) ($info['http_code'] ?? 0);
-    return $httpcode >= 200 && $httpcode < 300;
+    // Sin popen o en Windows (donde 'cmd &' no es fire-and-forget fiable):
+    // POST sincrono corto. Mejor un evento bloqueante ocasional que perder
+    // la analitica.
+    if (PHP_OS_FAMILY === 'Windows' || !function_exists('popen')) {
+        $curl = new \curl();
+        $curl->setHeader([
+            'Authorization: Bearer ' . $apikey,
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ]);
+        $curl->post($endpoint, $json, [
+            'CURLOPT_TIMEOUT' => 2,
+            'CURLOPT_CONNECTTIMEOUT' => 2,
+            'CURLOPT_FOLLOWLOCATION' => 0,
+        ]);
+        $info = $curl->get_info();
+        $httpcode = (int) ($info['http_code'] ?? 0);
+        return $httpcode >= 200 && $httpcode < 300;
+    }
+
+    $payloadfile = tempnam(sys_get_temp_dir(), 'reelo_evt_');
+    $cfgfile = tempnam(sys_get_temp_dir(), 'reelo_cfg_');
+    if ($payloadfile === false || $cfgfile === false) {
+        return false;
+    }
+    @file_put_contents($payloadfile, $json);
+    // Config de curl: mantiene el apikey fuera de ps y del historial de la
+    // shell. tempnam crea los dos ficheros con modo 0600.
+    $cfg = "silent\n"
+        . "output=/dev/null\n"
+        . "request=POST\n"
+        . "header=Authorization: Bearer {$apikey}\n"
+        . "header=Content-Type: application/json\n"
+        . "data-binary=@{$payloadfile}\n"
+        . "max-time=5\n"
+        . "connect-timeout=3\n"
+        . "url={$endpoint}\n";
+    @file_put_contents($cfgfile, $cfg);
+
+    // '&' al final: la shell hace el fork y pclose() vuelve al instante.
+    $cmd = 'curl --config ' . escapeshellarg($cfgfile) . ' >/dev/null 2>&1 &';
+    $p = popen($cmd, 'r');
+    if ($p === false) {
+        return false;
+    }
+    pclose($p);
+    return true;
 }
 
 /**

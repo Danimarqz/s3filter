@@ -65,7 +65,12 @@ if (!is_array($payload)) {
     s3video_events_fail(400);
 }
 
-$subject = isset($payload['subject']) && is_string($payload['subject']) ? $payload['subject'] : '';
+// El subject es determinista desde $USER->id y el secret del plugin
+// (s3video_analytics_subject): recalcularlo aqui e ignorar el del payload,
+// para que el cliente no pueda reportar analitica bajo un identificador
+// ajeno. Este endpoint solo deja pasar a usuarios logueados no invitados,
+// asi que el subject siempre es no vacio.
+$subject = s3video_analytics_subject();
 $events = isset($payload['events']) && is_array($payload['events']) ? $payload['events'] : [];
 if (empty($events)) {
     s3video_events_fail(400);
