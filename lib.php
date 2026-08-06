@@ -410,6 +410,38 @@ function s3video_encode_key(string $path): string {
 }
 
 /**
+ * Relays a batch of analytics events to Reelo's POST /events with this
+ * site's tenant API key. Called only from events.php, server-side: the API
+ * key must never appear in a page the learner's browser can read.
+ *
+ * @param array $payload {subject, events:[{videoPath,type,positionSeconds,ts}]}
+ * @return bool true when Reelo accepted the batch (2xx)
+ */
+function s3video_post_events(array $payload): bool {
+    $apikey = (string) s3video_setting('apikey', '');
+    if ($apikey === '') {
+        error_log('filter_s3video: no apikey configured; dropping analytics batch');
+        return false;
+    }
+
+    $curl = new \curl();
+    $curl->setHeader([
+        'Authorization: Bearer ' . $apikey,
+        'Content-Type: application/json',
+        'Accept: application/json',
+    ]);
+    $curl->post(rtrim(S3VIDEO_API_URL, '/') . '/events', json_encode($payload), [
+        'CURLOPT_TIMEOUT' => 5,
+        'CURLOPT_CONNECTTIMEOUT' => 3,
+        'CURLOPT_FOLLOWLOCATION' => 0,
+    ]);
+
+    $info = $curl->get_info();
+    $httpcode = (int) ($info['http_code'] ?? 0);
+    return $httpcode >= 200 && $httpcode < 300;
+}
+
+/**
  * Downloads a URL that already carries a valid signature, with retries.
  *
  * @param string $url
@@ -629,12 +661,6 @@ function s3video_player(string $filename, array $options = []): string {
     $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
     $escapedid = 'vjs_' . $escapedid;
 
-    $extrahtml = $isaudio ? '' : s3video_build_video_extras($escapedid, $filename);
-
-    if ($cacheable && isset($rendercache[$cachekey])) {
-        return $rendercache[$cachekey] . $extrahtml;
-    }
-
     $tokenttl = max(60, (int) s3video_setting('tokenttl', 1800));
     if (!empty($options['token']) && !empty($options['expires'])) {
         $token = $options['token'];
@@ -642,6 +668,15 @@ function s3video_player(string $filename, array $options = []): string {
     } else {
         $expires = time() + $tokenttl;
         $token = s3video_generate_token($filename, $expires, $courseid, s3video_get_request_ip());
+    }
+
+    // El beacon de analitica se construye con el mismo token HMAC que la
+    // playlist: el apikey del tenant NUNCA sale del servidor (lo usa solo
+    // events.php, server-side). Ver s3video_build_video_extras().
+    $extrahtml = $isaudio ? '' : s3video_build_video_extras($escapedid, $filename, $token, $expires, $courseid);
+
+    if ($cacheable && isset($rendercache[$cachekey])) {
+        return $rendercache[$cachekey] . $extrahtml;
     }
 
     $playlistparams = ['f' => $filename, 't' => $token, 'e' => $expires, 'c' => $courseid];
@@ -795,15 +830,28 @@ function s3video_analytics_subject(): string {
  * analytics beacon sharing one script scope, so onTamper reports to the same
  * queue. Never cached.
  *
+ * The beacon posts to the plugin's own events.php, which validates the same
+ * HMAC token that protects the playlist and relays server-side to Reelo
+ * with the tenant's API key. The API key never reaches the browser: leaking
+ * it would let any student mint CloudFront signatures for the whole catalog
+ * (POST /moodle/authorize trusts that same key).
+ *
  * @param string $escapedid DOM id of the video element
  * @param string $filename logical video path
+ * @param string $token HMAC token minted for this render
+ * @param int $expires unix timestamp the token expires at
+ * @param int $courseid course the video was embedded in (0 = none)
  * @return string
  */
-function s3video_build_video_extras(string $escapedid, string $filename): string {
-    global $USER;
+function s3video_build_video_extras(string $escapedid, string $filename, string $token, int $expires, int $courseid): string {
+    global $CFG, $USER;
 
-    $analyticsurl = rtrim(S3VIDEO_API_URL, '/') . '/events';
-    $apikey = (string) s3video_setting('apikey', '');
+    $eventurl = $CFG->wwwroot . '/filter/s3video/events.php?' . http_build_query([
+        'f' => $filename,
+        't' => $token,
+        'e' => $expires,
+        'c' => $courseid,
+    ], '', '&', PHP_QUERY_RFC3986);
     $subject = s3video_analytics_subject();
 
     $watermarklabel = '';
@@ -812,8 +860,7 @@ function s3video_build_video_extras(string $escapedid, string $filename): string
     }
 
     $idjson = json_encode($escapedid, JSON_UNESCAPED_SLASHES);
-    $urljson = json_encode($analyticsurl, JSON_UNESCAPED_SLASHES);
-    $tokenjson = json_encode($apikey, JSON_UNESCAPED_SLASHES);
+    $urljson = json_encode($eventurl, JSON_UNESCAPED_SLASHES);
     $subjectjson = json_encode($subject, JSON_UNESCAPED_SLASHES);
     $pathjson = json_encode($filename, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     $labeljson = json_encode($watermarklabel, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -840,7 +887,6 @@ function s3video_build_video_extras(string $escapedid, string $filename): string
   function init(player) {
     var cfg = {
       url: {$urljson},
-      token: {$tokenjson},
       subject: {$subjectjson},
       videoPath: {$pathjson},
       heartbeatSeconds: 15
@@ -851,12 +897,12 @@ function s3video_build_video_extras(string $escapedid, string $filename): string
       queue.push({videoPath: cfg.videoPath, type: type, positionSeconds: Math.round(pos), ts: Date.now()});
     }
     function flush() {
-      if (queue.length === 0 || !cfg.url || !cfg.token) return;
+      if (queue.length === 0 || !cfg.url) return;
       var batch = queue; queue = [];
       try {
         fetch(cfg.url, {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.token},
+          headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({subject: cfg.subject, events: batch}),
           keepalive: true
         }).catch(function() {});
