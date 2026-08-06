@@ -7,6 +7,7 @@ $string['tokeninvalid'] = 'Este enlace seguro ha caducado. Vuelve a abrir el vid
 $string['sessionconflict'] = 'Ahora estás conectado como {$a}. Cierra la sesión en este navegador antes de usar otra cuenta.';
 $string['logoutandretry'] = 'Cerrar sesión y reintentar';
 $string['reopenthroughapp'] = 'Vuelve a abrir el video desde Moodle para generar un enlace nuevo.';
+$string['sessionexpired'] = 'La sesión de reproducción ha caducado. Vuelve a abrir el video desde Moodle.';
 $string['missingfilename'] = 'Falta el identificador del video. Vuelve a abrir este recurso desde Moodle.';
 $string['manualenrolrequired'] = 'Tu cuenta debe tener una matrícula manual activa para acceder a este vídeo.';
 
@@ -29,7 +30,7 @@ $string['requirecoursedesc'] = 'Bloquear la reproducción cuando el video no est
 $string['bindip'] = 'Vincular tokens a IP';
 $string['bindipdesc'] = 'Añade la IP de la solicitud al payload del token interno para protección extra.';
 $string['tokenttl'] = 'TTL del token interno (segundos)';
-$string['tokenttldesc'] = 'Cuánto tiempo es válido un token de playlist. Debe cubrir toda la sesión de visionado.';
+$string['tokenttldesc'] = 'Cuánto tiempo es válido un token de playlist. Además de cubrir toda la sesión de visionado, debe SOBREVIVIR a la firma de CloudFront de Reelo (TTL = duración de la clase + 30 min, techo de 6 h): la recuperación ante 403 recarga la playlist con este mismo token, y si el token caduca antes que la firma el reintento muere con un 403. El default (7 h = 25200 s) está por encima del techo de la firma; no lo bajes por debajo de él.';
 $string['nocoursecontext'] = 'Este video solo está disponible dentro de un curso.';
 $string['notenrolled'] = 'No estás matriculado en el curso donde está incrustado este video.';
 $string['servicedenied'] = 'Este sitio no está autorizado para acceder al servicio de video. Contacta con el administrador del sitio.';

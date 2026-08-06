@@ -576,7 +576,12 @@ function s3video_is_safe_rendition_name(string $name): bool {
 function s3video_rewrite_master_playlist(string $content, string $path, int $courseid, string $ip, bool $audio): string {
     global $CFG;
 
-    $tokenttl = max(60, (int) s3video_setting('tokenttl', 1800));
+    // Mismo fallback que s3video_player (25200 = 7 h): los tokens de los
+    // renditions dentro del master deben durar lo mismo que el del player.
+    // Si divergieran, en un sitio sin el ajuste guardado el player recibiria
+    // un token de 7 h y los renditions de 30 min, y la recuperacion ante 403
+    // fallaria a mitad de clase.
+    $tokenttl = max(60, (int) s3video_setting('tokenttl', 25200));
     $expires = time() + $tokenttl;
     $token = s3video_generate_token($path, $expires, $courseid, $ip);
 
@@ -710,7 +715,10 @@ function s3video_player(string $filename, array $options = []): string {
     $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
     $escapedid = 'vjs_' . $escapedid;
 
-    $tokenttl = max(60, (int) s3video_setting('tokenttl', 1800));
+    // tokenttl default 7 h (25200 s): debe sobrevivir a la firma de Reelo
+    // (TTL = duración + 30 min, techo de 6 h), porque la recuperación ante
+    // 403 (fase 0.2) recarga playlist.php con el token ORIGINAL del render.
+    $tokenttl = max(60, (int) s3video_setting('tokenttl', 25200));
     if (!empty($options['token']) && !empty($options['expires'])) {
         $token = $options['token'];
         $expires = (int) $options['expires'];
@@ -719,21 +727,25 @@ function s3video_player(string $filename, array $options = []): string {
         $token = s3video_generate_token($filename, $expires, $courseid, s3video_get_request_ip());
     }
 
-    // El beacon de analitica se construye con el mismo token HMAC que la
-    // playlist: el apikey del tenant NUNCA sale del servidor (lo usa solo
-    // events.php, server-side). Ver s3video_build_video_extras().
-    $extrahtml = $isaudio ? '' : s3video_build_video_extras($escapedid, $filename, $token, $expires, $courseid);
-
-    if ($cacheable && isset($rendercache[$cachekey])) {
-        return $rendercache[$cachekey] . $extrahtml;
-    }
-
     $playlistparams = ['f' => $filename, 't' => $token, 'e' => $expires, 'c' => $courseid];
     if ($isaudio) {
         $playlistparams['a'] = 1;
     }
     $playlistquery = http_build_query($playlistparams, '', '&', PHP_QUERY_RFC3986);
     $playlisturl = $CFG->wwwroot . '/filter/s3video/playlist.php?' . $playlistquery;
+
+    // El beacon de analitica se construye con el mismo token HMAC que la
+    // playlist: el apikey del tenant NUNCA sale del servidor (lo usa solo
+    // events.php, server-side). Ver s3video_build_video_extras(). Se le pasa
+    // tambien la URL de playlist para la recuperacion ante 403 (fase 0.2 del
+    // plan de TTL corto). Los embeds de solo audio no emiten extras (ni
+    // watermark, ni analitica, ni recuperacion): a proposito, es un flujo
+    // marginal que no merece el JS extra.
+    $extrahtml = $isaudio ? '' : s3video_build_video_extras($escapedid, $filename, $token, $expires, $courseid, $playlisturl);
+
+    if ($cacheable && isset($rendercache[$cachekey])) {
+        return $rendercache[$cachekey] . $extrahtml;
+    }
 
     $embedparams = ['f' => $filename, 't' => $token, 'e' => $expires, 'c' => $courseid];
     if ($isaudio) {
@@ -890,9 +902,12 @@ function s3video_analytics_subject(): string {
  * @param string $token HMAC token minted for this render
  * @param int $expires unix timestamp the token expires at
  * @param int $courseid course the video was embedded in (0 = none)
+ * @param string $playlisturl playlist.php URL, used by the 403 auto-recovery
+ *     to reload the source with a cache-buster when the signature expires
+ *     mid-playback (plan TTL corto, fase 0.2)
  * @return string
  */
-function s3video_build_video_extras(string $escapedid, string $filename, string $token, int $expires, int $courseid): string {
+function s3video_build_video_extras(string $escapedid, string $filename, string $token, int $expires, int $courseid, string $playlisturl): string {
     global $CFG, $USER;
 
     $eventurl = $CFG->wwwroot . '/filter/s3video/events.php?' . http_build_query([
@@ -913,6 +928,8 @@ function s3video_build_video_extras(string $escapedid, string $filename, string 
     $subjectjson = json_encode($subject, JSON_UNESCAPED_SLASHES);
     $pathjson = json_encode($filename, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     $labeljson = json_encode($watermarklabel, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $playlistjson = json_encode($playlisturl, JSON_UNESCAPED_SLASHES);
+    $expiredjson = json_encode(s(get_string('sessionexpired', 'filter_s3video')), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     return <<<HTML
 <script>
@@ -938,6 +955,7 @@ function s3video_build_video_extras(string $escapedid, string $filename, string 
       url: {$urljson},
       subject: {$subjectjson},
       videoPath: {$pathjson},
+      playlistUrl: {$playlistjson},
       heartbeatSeconds: 15
     };
     var queue = [];
@@ -970,6 +988,49 @@ function s3video_build_video_extras(string $escapedid, string $filename, string 
     player.on('dispose', function() {
       clearInterval(heartbeat);
       flush();
+    });
+
+    // --- Recuperacion ante 403 (firma caducada a mitad de clase) ---------
+    // Los segmentos llevan la firma horneada en la playlist; si caduca a
+    // mitad de leccion, el reproductor ve una rafaga de 403 y dispara error.
+    // Un solo reintento por caducidad: tras cada error, guardar la posicion,
+    // recargar la playlist con cache-buster (playlist.php vuelve a firmar con
+    // Reelo si la firma anterior caduco), restaurar la posicion y reanudar.
+    // recovered se resetea en el primer 'playing' posterior: una sesion larga
+    // que sufra varias caducidades (una cada firma) se recupera cada vez. Si
+    // la recarga no llega a reproducir, recovered sigue true y el siguiente
+    // error muestra el mensaje explicito.
+    var recovered = false;
+
+    function showSessionExpired() {
+      var el = document.getElementById(targetId);
+      if (!el) return;
+      var msg = document.createElement('div');
+      msg.setAttribute('role', 'alert');
+      msg.className = 'alert alert-warning';
+      msg.style.cssText = 'margin:0.5em 0;padding:0.6em 1em;';
+      msg.textContent = {$expiredjson};
+      el.parentNode.insertBefore(msg, el.nextSibling);
+    }
+
+    player.on('error', function() {
+      if (recovered) {
+        showSessionExpired();
+        return;
+      }
+      recovered = true;
+      var pos = player.currentTime() || 0;
+      var sep = cfg.playlistUrl.indexOf('?') === -1 ? '?' : '&';
+      player.src({ src: cfg.playlistUrl + sep + 'cb=' + Date.now(), type: 'application/x-mpegURL' });
+      player.one('playing', function() { recovered = false; });
+      if (pos > 0) {
+        player.one('loadedmetadata', function() {
+          player.currentTime(pos);
+          player.play();
+        });
+      } else {
+        player.play();
+      }
     });
 
     if (watermarkLabel) {

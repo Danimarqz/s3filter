@@ -73,7 +73,7 @@ if ($hassiteconfig) {
         'filter_s3video/tokenttl',
         get_string('tokenttl', 'filter_s3video'),
         get_string('tokenttldesc', 'filter_s3video'),
-        1800,
+        25200,
         PARAM_INT,
         10
     ));

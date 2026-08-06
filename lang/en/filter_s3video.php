@@ -7,6 +7,7 @@ $string['tokeninvalid'] = 'This secure link has expired. Please open the video a
 $string['sessionconflict'] = 'You are currently logged in as {$a}. Log out from this browser before trying with a different user.';
 $string['logoutandretry'] = 'Log out and try again';
 $string['reopenthroughapp'] = 'Open the video from Moodle again to get a fresh link.';
+$string['sessionexpired'] = 'The playback session has expired. Open the video again from Moodle.';
 $string['missingfilename'] = 'The video identifier is missing. Please open this resource again from Moodle.';
 $string['manualenrolrequired'] = 'Your account must have an active manual enrolment to access this video.';
 
@@ -29,7 +30,7 @@ $string['requirecoursedesc'] = 'Block playback when the video is not embedded in
 $string['bindip'] = 'Bind tokens to IP';
 $string['bindipdesc'] = 'Add the requester IP to the internal token payload for extra protection.';
 $string['tokenttl'] = 'Internal token TTL (seconds)';
-$string['tokenttldesc'] = 'How long a playlist token stays valid. Must cover the whole viewing session.';
+$string['tokenttldesc'] = 'How long a playlist token stays valid. Besides covering the whole viewing session, it must OUTLIVE the Reelo CloudFront signature (TTL = class duration + 30 min, 6 h ceiling): the 403 recovery reloads the playlist with this same token, and if the token expires before the signature the retry dies with a 403. The default (7 h = 25200 s) sits above the signature ceiling; do not set it below that.';
 $string['nocoursecontext'] = 'This video is only available inside a course.';
 $string['notenrolled'] = 'You are not enrolled in the course where this video is embedded.';
 $string['servicedenied'] = 'This site is not authorised to access the video service. Contact your site administrator.';
