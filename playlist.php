@@ -95,8 +95,11 @@ if ($courseid > 0) {
 /* Layer 1: CloudFront signature from Reelo                               */
 /* --------------------------------------------------------------------- */
 
-$prefix = $audio ? 'audio/' : '';
-$signpath = $prefix . $path;
+// No existe un prefijo "audio/": los renditions de video y audio viven
+// juntos bajo Materia/Clase/, y la policy de "Materia/Clase/*" ya cubre el
+// audio. Firmar "audio/Materia/Clase" cambiaba el ambito a base/audio/
+// Materia/* (toda una 'materia' inexistente) y fallaba con 502.
+$signpath = $path;
 
 $reason = null;
 $signature = s3video_fetch_signature($signpath, $reason);
@@ -108,7 +111,12 @@ if ($signature === null) {
 }
 
 $basename = basename($path);
-$masterkey = "{$signpath}/{$basename}.m3u8";
+// El master no siempre se llama como la clase: el backend devuelve el
+// nombre real (videos.master) en la respuesta de /moodle/authorize y la
+// firma lo cachea. Fallback a la convencion "{clase}.m3u8" para firmas
+// antiguas.
+$mastername = !empty($signature['master']) ? $signature['master'] : $basename . '.m3u8';
+$masterkey = "{$signpath}/{$mastername}";
 $key = $rendition !== null ? "{$signpath}/{$rendition}" : $masterkey;
 
 /* --------------------------------------------------------------------- */

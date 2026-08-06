@@ -381,6 +381,10 @@ function s3video_fetch_signature(string $path, ?string &$reason = null): ?array 
         'baseurl' => rtrim((string) $decoded['baseUrl'], '/'),
         'query' => $query,
         'expiresat' => time() + max(600, $ttl),
+        // El nombre real del master de la clase (videos.master): sin el,
+        // playlist.php asume "{clase}.m3u8" y falla si el master tiene otro
+        // nombre.
+        'master' => isset($decoded['master']) ? (string) $decoded['master'] : '',
     ];
 
     $cache->set($cachekey, $result);
@@ -442,13 +446,16 @@ function s3video_post_events(array $payload): bool {
 }
 
 /**
- * Downloads a URL that already carries a valid signature, with retries.
+ * Downloads a URL that already carries a valid signature, with a single
+ * fast retry. NO sleep entre reintentos: se invoca en cada peticion de
+ * playlist y de subtitulo, y 3 reintentos con sleep(1) y timeout 15 podian
+ * bloquear un worker de PHP-FPM hasta 45s bajo carga (DoS autoinfligido).
  *
  * @param string $url
  * @param int $retries
  * @return string|false
  */
-function s3video_fetch_remote(string $url, int $retries = 3) {
+function s3video_fetch_remote(string $url, int $retries = 2) {
     $attempt = 0;
     while ($attempt < $retries) {
         $attempt++;
@@ -458,7 +465,8 @@ function s3video_fetch_remote(string $url, int $retries = 3) {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_TIMEOUT => 15,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_USERAGENT => 'Reelo-Moodle-HLS-Proxy',
             CURLOPT_FAILONERROR => true,
         ]);
@@ -475,10 +483,6 @@ function s3video_fetch_remote(string $url, int $retries = 3) {
 
         $safeurl = strtok($url, '?');
         error_log("filter_s3video: fetch {$attempt}/{$retries} failed for [{$safeurl}]. HTTP {$http}. curl [{$err}] {$errmsg}");
-
-        if ($attempt < $retries) {
-            sleep(1);
-        }
     }
 
     return false;
