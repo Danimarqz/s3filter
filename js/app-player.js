@@ -1,9 +1,10 @@
 // Reproductor in-app para la app de Moodle.
 //
 // Lo carga el bootstrap que devuelve \filter_s3video\output\mobile::mobile_init,
-// que además deja en window.s3videoApp los servicios de la app y las rutas que
-// solo sabe el servidor. Aquí no hay nada secreto: el marcador que pinta el
-// filtro ya trae la playlist firmada, el token y el watermark resuelto.
+// que además deja en window.s3videoApp las rutas que solo sabe el servidor.
+// Aquí no hay nada secreto ni se le pregunta nada a la app: el marcador que
+// pinta el filtro ya trae la playlist firmada, el token y el watermark
+// resuelto.
 //
 // NO se registra ningún handler en CoreFilterDelegate, y es la decisión de
 // diseño más importante de este fichero.
@@ -26,7 +27,6 @@
   'use strict';
 
   var CFG = window.s3videoApp || {};
-  var APP = CFG.servicios;
   var WWWROOT = CFG.wwwroot;
   var COMPONENTE = CFG.componente;
   var SELECTOR = '.' + COMPONENTE + '-app-player';
@@ -130,103 +130,27 @@
     });
   }
 
-  // Pide al servidor los datos firmados de una clase. Va autenticado como el
-  // alumno, así que el token sale atado a su id y el watermark con su nombre;
-  // ni el apikey del tenant ni el secreto de firma bajan al dispositivo.
-  //
-  // Dos caminos porque no está documentado cuál de los dos servicios expone la
-  // app en este contexto. El diag dice cuál funcionó, y cuando lo sepamos se
-  // deja solo ese.
-  function pedirDatos(path, courseid) {
-    var args = {path: path, courseid: parseInt(courseid, 10) || 0};
-
-    if (APP && APP.CoreSitePluginsProvider && APP.CoreSitePluginsProvider.getContent) {
-      diag('ws:siteplugins');
-      return Promise.resolve(APP.CoreSitePluginsProvider.getContent(COMPONENTE, 'mobile_video', args))
-        .then(function(r) { return normalizar(r); });
-    }
-
-    if (APP && APP.CoreSitesProvider && APP.CoreSitesProvider.getCurrentSite) {
-      diag('ws:site-write');
-      return Promise.resolve(APP.CoreSitesProvider.getCurrentSite()).then(function(site) {
-        return site.write('tool_mobile_get_content', {
-          component: COMPONENTE,
-          method: 'mobile_video',
-          args: [
-            {name: 'path', value: String(path)},
-            {name: 'courseid', value: String(args.courseid)}
-          ]
-        });
-      }).then(function(r) { return normalizar(r); });
-    }
-
-    diag('ws:sin-servicio:' + Object.keys(APP || {}).slice(0, 15).join(','));
-    return Promise.reject(new Error('sin servicio de web service'));
-  }
-
-  // otherdata llega como objeto o como lista de {name, value} según el camino.
-  function normalizar(r) {
-    var od = (r && r.otherdata) || r || {};
-    if (Object.prototype.toString.call(od) !== '[object Array]') { return od; }
-    var out = {};
-    for (var i = 0; i < od.length; i++) { out[od[i].name] = od[i].value; }
-    return out;
-  }
-
+  // El servidor ya filtró y el marcador trae los datos firmados: no hay nada
+  // que preguntarle. Si faltan, no se monta nada y el alumno se queda con el
+  // enlace al navegador que trae el propio marcador.
   function montar(el) {
-    // Camino normal: el servidor ya filtró y el marcador trae los datos
-    // firmados. No hace falta preguntar nada.
-    var directo = {
+    var cfg = {
       playlist: el.getAttribute('data-s3video-playlist'),
       events: el.getAttribute('data-s3video-events'),
       subject: el.getAttribute('data-s3video-subject'),
       path: el.getAttribute('data-s3video-path'),
       watermark: el.getAttribute('data-s3video-watermark'),
-      color: el.getAttribute('data-s3video-color'),
-      embed: el.getAttribute('data-s3video-embed')
+      color: el.getAttribute('data-s3video-color')
     };
-    if (directo.playlist) {
-      diag('montar:marcador');
-      return build(el, directo);
-    }
-
-    // Respaldo: si el marcador llegara sin los datos (la app podría sanear los
-    // data-*), se piden por web service con la ruta.
-    var path = directo.path;
-    var courseid = el.getAttribute('data-s3video-courseid');
-    if (!path) { diag('montar:sin-datos'); return; }
-    diag('montar:ws');
-
-    return pedirDatos(path, courseid).then(function(cfg) {
-      if (!cfg || !cfg.playlist) {
-        diag('sin-playlist:' + ((cfg && cfg.error) || 'respuesta vacia'));
-        el.textContent = (cfg && cfg.error) || '';
-        return;
-      }
-      diag('datos-ok');
-      return build(el, cfg);
-    }).catch(function(e) {
-      diag('montar-error:' + (e && e.message ? e.message : e));
-    });
+    if (!cfg.playlist) { diag('montar:sin-datos'); return; }
+    diag('montar:marcador');
+    return build(el, cfg);
   }
 
   function build(el, cfg) {
-    if (!cfg.playlist) { return; }
-
-    // Respaldo visible desde ya: si video.js no llega a cargar (CSP de la
-    // app, red), el alumno se queda con el enlace al navegador en vez de un
-    // hueco vacío. Se sustituye por el reproductor solo cuando está listo.
-    if (cfg.embed) {
-      var a = document.createElement('a');
-      a.href = cfg.embed;
-      a.target = '_blank';
-      a.textContent = cfg.openlabel || 'Abrir video';
-      a.style.cssText = 'display:inline-block;background:#1976d2;color:#fff;'
-        + 'padding:0.8em 1.2em;border-radius:6px;font-weight:600;text-decoration:none;';
-      el.textContent = '';
-      el.appendChild(a);
-    }
-
+    // El marcador que pintó el servidor (enlace al navegador + explicación) se
+    // queda visible hasta que video.js está cargado: si la carga falla, el
+    // alumno ve exactamente lo que veía antes de que existiera esto.
     loadCss(CFG.videojscss);
     applyColor(cfg.color);
 

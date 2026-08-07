@@ -328,7 +328,6 @@ HTML;
             'path' => $filename,
             'watermark' => $tokenuserid > 0 ? watermark::label($USER) : '',
             'color' => watermark::color(),
-            'embed' => $embedurl,
         ];
         $attrs = '';
         foreach ($data as $key => $value) {
