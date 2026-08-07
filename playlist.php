@@ -1,133 +1,199 @@
 <?php
-require_once(__DIR__ . '/../../config.php');
-require_once($CFG->dirroot . '/filter/s3video/lib.php');
-require_once($CFG->dirroot . '/lib/aws-sdk/src/CloudFront/UrlSigner.php');
-
-use Aws\CloudFront\UrlSigner;
-
 /**
- * Devuelve una playlist HLS (.m3u8) firmada desde CloudFront
- * para una ruta de vídeo relativa pasada como parámetro `f`.
+ * Serves an HLS playlist (.m3u8) or a WebVTT subtitle track, rewritten so
+ * the browser can fetch the media straight from CloudFront.
  *
- * Ejemplo:
- *   [s3:CLASES UPP/CLASE UPP 10]
- *   → f=CLASES%20UPP/CLASE%20UPP%2010
- *   → s3://bucket/CLASES UPP/CLASE UPP 10/CLASE UPP 10.m3u8
+ * ACCESS CONTROL — both layers apply to every request here, including
+ * renditions and subtitles:
+ *
+ *   1. The signed `c` (course) parameter must survive HMAC validation and
+ *      the viewer must be currently enrolled in that course.
+ *   2. The CloudFront signature is requested from Reelo with this site's
+ *      API key, and Reelo scopes it to this class alone.
+ *
+ * @package   filter_s3video
  */
 
-//  parámetros 
-$rawf    = optional_param('f', null, PARAM_RAW_TRIMMED);
-$token   = optional_param('t', null, PARAM_ALPHANUMEXT);
+require_once(__DIR__ . '/../../config.php');
+require_once($CFG->dirroot . '/filter/s3video/lib.php');
+
+// Antes de nada, incluso antes de validar: el reproductor de la app pide esto
+// por XHR desde otro origen y sin CORS el navegador descarta la respuesta sin
+// mirarla, sea 200 o 403.
+s3video_send_cors_headers();
+
+$rawf = optional_param('f', null, PARAM_RAW_TRIMMED);
+$token = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
-$audio   = optional_param('a', 0, PARAM_INT);
+$courseid = optional_param('c', 0, PARAM_INT);
+// Usuario firmado dentro del token (camino de la app, sin cookie de sesión).
+// Manipularlo invalida el HMAC, asi que no hace falta confiar en el valor.
+$userid = optional_param('u', 0, PARAM_INT);
+$audio = optional_param('a', 0, PARAM_INT);
+$rawr = optional_param('r', null, PARAM_RAW_TRIMMED);
+$rawvtt = optional_param('vtt', null, PARAM_ALPHANUMEXT);
 
-//  validación inicial 
+/**
+ * Ends the request with a plain-text error.
+ */
+function s3video_playlist_fail(int $status, string $message): void {
+    http_response_code($status);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo '# ' . $message;
+    exit;
+}
+
 if (empty($rawf)) {
-    http_response_code(400);
-    echo "Error: falta parámetro f.";
-    exit;
+    s3video_playlist_fail(400, 'Falta el parámetro f.');
 }
 
-//  normalizar ruta 
-$path = $rawf;
-$path = str_replace('\\', '/', $path);
-$path = preg_replace('#/+#', '/', $path);
-$path = trim($path, '/');
-
-if (strpos($path, '..') !== false) {
-    http_response_code(400);
-    echo "Error: ruta inválida.";
-    exit;
+// `r` (rendition): .m3u8 basename, no path separators.
+$rendition = null;
+if ($rawr !== null && $rawr !== '') {
+    $candidate = basename(str_replace('\\', '/', $rawr));
+    if ($candidate !== $rawr || strpos($rawr, '..') !== false || !s3video_is_safe_rendition_name($candidate)) {
+        s3video_playlist_fail(400, 'Parámetro r inválido.');
+    }
+    $rendition = $candidate;
 }
 
-//  construir clave final S3 
+// `vtt` (subtitle language): 2-5 alphanumeric characters.
+$vttlang = null;
+if ($rawvtt !== null && $rawvtt !== '') {
+    $candidatevtt = strtolower($rawvtt);
+    if (!preg_match('/^[a-z0-9\-]{2,5}$/', $candidatevtt)) {
+        s3video_playlist_fail(400, 'Idioma de subtítulos inválido.');
+    }
+    $vttlang = $candidatevtt;
+}
+
+// Normalise the logical path.
+$path = trim(preg_replace('#/+#', '/', str_replace('\\', '/', $rawf)), '/');
+if ($path === '' || strpos($path, '..') !== false) {
+    s3video_playlist_fail(400, 'Ruta inválida.');
+}
+
+/* --------------------------------------------------------------------- */
+/* Layer 2: signed course + live enrolment                                */
+/* --------------------------------------------------------------------- */
+
+if (empty($token) || empty($expires)) {
+    s3video_playlist_fail(403, get_string('reopenthroughapp', 'filter_s3video'));
+}
+
+$denied = s3video_authorize_request($path, $token, (int) $expires, (int) $courseid, (int) $userid);
+if ($denied !== null) {
+    s3video_playlist_fail(403, get_string($denied, 'filter_s3video'));
+}
+
+/* --------------------------------------------------------------------- */
+/* Layer 1: CloudFront signature from Reelo                               */
+/* --------------------------------------------------------------------- */
+
+// No existe un prefijo "audio/": los renditions de video y audio viven
+// juntos bajo Materia/Clase/, y la policy de "Materia/Clase/*" ya cubre el
+// audio. Firmar "audio/Materia/Clase" cambiaba el ambito a base/audio/
+// Materia/* (toda una 'materia' inexistente) y fallaba con 502.
+$signpath = $path;
+
+$reason = null;
+$signature = s3video_fetch_signature($signpath, $reason, (int) $userid);
+if ($signature === null) {
+    $message = $reason === 'denied'
+        ? get_string('servicedenied', 'filter_s3video')
+        : get_string('servicedown', 'filter_s3video');
+    s3video_playlist_fail($reason === 'denied' ? 403 : 503, $message);
+}
+
 $basename = basename($path);
-// audio/* CloudFront behavior enruta a bucket de audio; video usa raíz.
-$prefix = $audio ? 'audio/' : '';
-$key = "{$prefix}{$path}/{$basename}.m3u8";
+// El master no siempre se llama como la clase: el backend devuelve el
+// nombre real (videos.master) en la respuesta de /moodle/authorize y la
+// firma lo cachea. Fallback a la convencion "{clase}.m3u8" para firmas
+// antiguas.
+$mastername = !empty($signature['master']) ? $signature['master'] : $basename . '.m3u8';
+$masterkey = "{$signpath}/{$mastername}";
+$key = $rendition !== null ? "{$signpath}/{$rendition}" : $masterkey;
 
-//  control de acceso 
-$ip = s3video_get_request_ip();
-$authorized = false;
-$tokenprovided = false;
-$manualenrolment = null;
+/* --------------------------------------------------------------------- */
+/* Subtitles: {path}/subs/{lang}.vtt, served without rewriting            */
+/* --------------------------------------------------------------------- */
 
-if ($token && $expires) {
-    $tokenprovided = true;
-    $authorized = s3video_validate_token($path, $token, (int)$expires, $ip);
-}
-if (!$authorized && isloggedin() && !isguestuser()) {
-    global $USER;
-    $manualenrolment = s3video_user_has_manual_enrolment($USER->id);
-    if ($manualenrolment) {
-        $authorized = true;
+if ($vttlang !== null) {
+    $vtturl = s3video_sign_url(
+        $signature['baseurl'] . '/' . s3video_encode_key("{$signpath}/subs/{$vttlang}.vtt"),
+        $signature
+    );
+    $vttcontent = s3video_fetch_remote($vtturl);
+    if ($vttcontent === false) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Subtítulo no encontrado.';
+        exit;
     }
-}
-if (!$authorized) {
-    http_response_code(403);
-    if ($manualenrolment === false) {
-        echo "# Error: se requiere una matrícula manual activa.";
-    } else {
-        echo "# Error: acceso no autorizado.";
-    }
+    header('Content-Type: text/vtt; charset=utf-8');
+    header('Cache-Control: private, max-age=60');
+    echo $vttcontent;
     exit;
 }
 
-//  configuración CloudFront 
-$cloudfrontdomain = s3video_require_env('S3VIDEO_CLOUDFRONT_DOMAIN');
-$keypairid        = s3video_require_env('S3VIDEO_CLOUDFRONT_KEYPAIR_ID');
-$privatekey       = s3video_require_env('S3VIDEO_CLOUDFRONT_PRIVATE_KEY');
+/* --------------------------------------------------------------------- */
+/* Playlist                                                               */
+/* --------------------------------------------------------------------- */
 
-$playlistttl = max(60, (int)s3video_env('S3VIDEO_PLAYLIST_TTL', 600));
-$expiresat   = time() + $playlistttl;
+// Modo cookie: lo pide el reproductor con m=c, y solo se concede si el CDN
+// comparte dominio con este Moodle. No hace falta que el parámetro vaya
+// firmado: forzarlo solo consigue recibir URLs sin firma, que sin las cookies
+// no sirven para nada.
+$cookiemode = optional_param('modo', '', PARAM_ALPHA) === 'cookie'
+    && s3video_set_cloudfront_cookies($signature);
 
-$signer = new UrlSigner($keypairid, $privatekey);
-
-//  helper para codificar por segmentos 
-$encode = function(string $p): string {
-    return implode('/', array_map('rawurlencode', explode('/', $p)));
-};
-
-//  URL CloudFront del .m3u8 
-$m3u8url = "https://{$cloudfrontdomain}/" . $encode($key);
-
-//  descargar playlist original firmada 
-$m3u8content = s3video_fetch_remote_signed_with_retry($signer, $m3u8url, $expiresat);
+// La descarga que hace el servidor sí va siempre firmada: las cookies son del
+// navegador del alumno, aquí no hay ninguna.
+$m3u8url = s3video_sign_url($signature['baseurl'] . '/' . s3video_encode_key($key), $signature);
+$m3u8content = s3video_fetch_remote($m3u8url);
 if ($m3u8content === false) {
-    http_response_code(502);
-    echo "# Error: no se pudo obtener la playlist.";
-    exit;
+    s3video_playlist_fail(502, 'No se pudo obtener la playlist.');
 }
 
-//  reescribir segmentos relativos 
-$basedir = trim(dirname($key), '/');
-$normalizedcontent = str_replace(["\r\n", "\r"], "\n", $m3u8content);
-$lines = explode("\n", $normalizedcontent);
-$rewritten = [];
+if ($rendition === null && s3video_is_master_playlist($m3u8content)) {
+    // Master playlist: point the renditions back at this script.
+    // $ip lo consumía el bloque de validación que ahora vive en
+    // s3video_authorize_request(); aquí hace falta para emitir los tokens de
+    // las renditions con la misma atadura a IP que el original.
+    $output = s3video_rewrite_master_playlist($m3u8content, $path, (int) $courseid,
+        s3video_get_request_ip(), (bool) $audio, (int) $userid, $cookiemode);
+} else {
+    // Media playlist: turn every segment into a signed CloudFront URL.
+    $basedir = trim(dirname($key), '/');
 
-foreach ($lines as $line) {
-    $trim = trim($line);
+    $resolvesegment = function (string $seg) use ($basedir, $signature, $cookiemode): string {
+        if (strncasecmp($seg, 'http://', 7) === 0 || strncasecmp($seg, 'https://', 8) === 0) {
+            return s3video_sign_url(strtok($seg, '?'), $signature, $cookiemode);
+        }
+        $segkey = ($basedir === '' ? $seg : $basedir . '/' . ltrim($seg, '/'));
+        return s3video_sign_url($signature['baseurl'] . '/' . s3video_encode_key($segkey), $signature, $cookiemode);
+    };
 
-    if ($trim === '' || $trim[0] === '#') {
-        $rewritten[] = $line;
-        continue;
+    $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", $m3u8content));
+    $rewritten = [];
+
+    foreach ($lines as $line) {
+        $trim = trim($line);
+
+        if ($trim === '' || $trim[0] === '#') {
+            if (stripos($trim, '#EXT-X-MAP:') === 0 && preg_match('/URI="([^"]*)"/', $trim, $m) && $m[1] !== '') {
+                $line = preg_replace('/URI="[^"]*"/', 'URI="' . $resolvesegment($m[1]) . '"', $line, 1);
+            }
+            $rewritten[] = $line;
+            continue;
+        }
+
+        $rewritten[] = $resolvesegment($trim);
     }
 
-    if (strncasecmp($trim, 'http://', 7) === 0 || strncasecmp($trim, 'https://', 8) === 0) {
-        // Segmento absoluto → refirmar
-        $segmenturl = strtok($trim, '?');
-        $rewritten[] = $signer->getSignedUrl($segmenturl, $expiresat);
-    } else {
-        // Segmento relativo → unir con base
-        $segkey = ($basedir === '' ? $trim : $basedir . '/' . ltrim($trim, '/'));
-        $absurl = "https://{$cloudfrontdomain}/" . $encode($segkey);
-        $rewritten[] = $signer->getSignedUrl($absurl, $expiresat);
-    }
+    $output = implode("\n", $rewritten);
 }
 
-//  salida final 
 header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
 header('Cache-Control: private, max-age=60');
-echo implode("\n", $rewritten);
-
-
+echo $output;

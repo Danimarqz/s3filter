@@ -1,11 +1,41 @@
 <?php
 $string['pluginname'] = 'S3 Video filter';
-$string['notsupported'] = 'Your browser does not support the video tag.';
+$string['notsupported'] = 'Tu navegador no soporta la etiqueta de video.';
 $string['openvideo'] = 'Abrir video';
-$string['openvideoinfo'] = 'El video se abrira en tu navegador.';
+$string['openvideoinfo'] = 'El video se abrirá en tu navegador.';
 $string['tokeninvalid'] = 'Este enlace seguro ha caducado. Vuelve a abrir el video desde la app de Moodle.';
-$string['sessionconflict'] = 'Ahora estas conectado como {$a}. Cierra la sesion en este navegador antes de usar otra cuenta.';
-$string['logoutandretry'] = 'Cerrar sesion y reintentar';
+$string['sessionconflict'] = 'Ahora estás conectado como {$a}. Cierra la sesión en este navegador antes de usar otra cuenta.';
+$string['logoutandretry'] = 'Cerrar sesión y reintentar';
 $string['reopenthroughapp'] = 'Vuelve a abrir el video desde Moodle para generar un enlace nuevo.';
+$string['sessionexpired'] = 'La sesión de reproducción ha caducado. Vuelve a abrir el video desde Moodle.';
 $string['missingfilename'] = 'Falta el identificador del video. Vuelve a abrir este recurso desde Moodle.';
 $string['manualenrolrequired'] = 'Tu cuenta debe tener una matrícula manual activa para acceder a este vídeo.';
+
+// Settings.
+$string['settings'] = 'Backend y watermark';
+$string['backendheading'] = 'Backend de Reelo';
+$string['backenddesc'] = 'El plugin está vinculado al despliegue de Reelo en {$a}. Esta URL es fija y no se puede cambiar aquí.';
+$string['apikey'] = 'API key de Reelo';
+$string['apikeydesc'] = 'El token de API del tenant. Se obtiene de la consola root de Reelo (detalle del tenant) y se puede rotar desde allí.';
+$string['secretkey'] = 'Secreto de firma local';
+$string['secretkeydesc'] = 'Secreto usado para firmar los tokens internos entre el filtro y los endpoints playlist/embed. Debe ser aleatorio y privado.';
+$string['watermarkheading'] = 'Watermark';
+$string['watermarkdesc'] = 'El watermark es un texto superpuesto al vídeo, distinto para cada alumno, que identifica a quien lo está viendo.';
+$string['watermarktemplate'] = 'Plantilla del watermark';
+$string['watermarktemplatedesc'] = 'Campos entre llaves, sustituidos por los datos de cada alumno; el resto del texto se deja tal cual. Ejemplo: <code>{firstname} - {profile_field_dni}</code>.<br />Disponibles: <code>{firstname}</code>, <code>{lastname}</code>, <code>{fullname}</code>, <code>{email}</code>, <code>{username}</code>, <code>{idnumber}</code>, <code>{alternatename}</code>, <code>{middlename}</code>, <code>{city}</code>, <code>{country}</code>, <code>{institution}</code>, <code>{department}</code>, <code>{phone1}</code>, <code>{phone2}</code> y <code>{profile_field_XXX}</code> para cualquier campo de perfil personalizado.<br />Un campo que el alumno tenga vacío se sustituye por nada (el separador que lo rodea sí se queda); un nombre de campo mal escrito se ve literal, lo que sirve para detectar la errata.';
+$string['mobileusers'] = 'Reproductor in-app (ids de usuario)';
+$string['mobileusersdesc'] = 'Ids de usuario separados por comas que reciben el reproductor dentro de la app de Moodle. <strong>Vacío = nadie</strong>, y es el valor correcto salvo que estés probando.<br />Ojo: el complemento móvil se sirve a todas las apps conectadas al sitio, así que un fallo aquí no afecta solo a quien abre un vídeo — puede dejar la app sin cargar ningún curso para todo el mundo. Por eso esta lista existe: sin ella no hay forma de probarlo sin exponer a los alumnos.';
+$string['watermarkcolor'] = 'Color del watermark';
+$string['watermarkcolordesc'] = 'Color del texto superpuesto. El blanco por defecto es el que mejor se lee sobre casi cualquier vídeo: cuanto más se parezca el color al de la imagen, menos legible será el watermark si hay que usarlo como prueba.';
+$string['accessheading'] = 'Acceso por curso';
+$string['accessdesc'] = 'Por defecto un video solo se puede reproducir si el usuario está matriculado en el curso donde está incrustado.';
+$string['requirecourse'] = 'Exigir matrícula en el curso';
+$string['requirecoursedesc'] = 'Bloquear la reproducción cuando el video no está incrustado dentro de un curso (o el usuario no está matriculado).';
+$string['bindip'] = 'Vincular tokens a IP';
+$string['bindipdesc'] = 'Añade la IP de la solicitud al payload del token interno para protección extra.';
+$string['tokenttl'] = 'TTL del token interno (segundos)';
+$string['tokenttldesc'] = 'Cuánto tiempo es válido un token de playlist. Además de cubrir toda la sesión de visionado, debe SOBREVIVIR a la firma de CloudFront de Reelo (TTL = duración de la clase + 30 min, techo de 6 h): la recuperación ante 403 recarga la playlist con este mismo token, y si el token caduca antes que la firma el reintento muere con un 403. El default (7 h = 25200 s) está por encima del techo de la firma; no lo bajes por debajo de él.';
+$string['nocoursecontext'] = 'Este video solo está disponible dentro de un curso.';
+$string['notenrolled'] = 'No estás matriculado en el curso donde está incrustado este video.';
+$string['servicedenied'] = 'Este sitio no está autorizado para acceder al servicio de video. Contacta con el administrador del sitio.';
+$string['servicedown'] = 'El servicio de video no está disponible temporalmente. Inténtalo de nuevo en un momento.';

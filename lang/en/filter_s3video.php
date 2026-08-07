@@ -7,5 +7,35 @@ $string['tokeninvalid'] = 'This secure link has expired. Please open the video a
 $string['sessionconflict'] = 'You are currently logged in as {$a}. Log out from this browser before trying with a different user.';
 $string['logoutandretry'] = 'Log out and try again';
 $string['reopenthroughapp'] = 'Open the video from Moodle again to get a fresh link.';
+$string['sessionexpired'] = 'The playback session has expired. Open the video again from Moodle.';
 $string['missingfilename'] = 'The video identifier is missing. Please open this resource again from Moodle.';
 $string['manualenrolrequired'] = 'Your account must have an active manual enrolment to access this video.';
+
+// Settings.
+$string['settings'] = 'Backend and watermark';
+$string['backendheading'] = 'Reelo backend';
+$string['backenddesc'] = 'The plugin is tied to the Reelo deployment at {$a}. This URL is fixed and cannot be changed here.';
+$string['apikey'] = 'Reelo API key';
+$string['apikeydesc'] = 'The tenant API token. It comes from the Reelo root console (tenant detail) and can be rotated there.';
+$string['secretkey'] = 'Local signing secret';
+$string['secretkeydesc'] = 'A secret used to sign internal tokens between the filter and the playlist/embed endpoints. Keep it random and private.';
+$string['watermarkheading'] = 'Watermark';
+$string['watermarkdesc'] = 'The watermark is a text overlay on the video, different for each learner, identifying whoever is watching.';
+$string['watermarktemplate'] = 'Watermark template';
+$string['watermarktemplatedesc'] = 'Fields in braces are replaced with each learner\'s data; everything else is kept literally. Example: <code>{firstname} - {profile_field_dni}</code>.<br />Available: <code>{firstname}</code>, <code>{lastname}</code>, <code>{fullname}</code>, <code>{email}</code>, <code>{username}</code>, <code>{idnumber}</code>, <code>{alternatename}</code>, <code>{middlename}</code>, <code>{city}</code>, <code>{country}</code>, <code>{institution}</code>, <code>{department}</code>, <code>{phone1}</code>, <code>{phone2}</code>, and <code>{profile_field_XXX}</code> for any custom profile field.<br />A field the learner left empty is replaced with nothing (the separator around it stays); a misspelt field name shows up literally, which is how you spot the typo.';
+$string['mobileusers'] = 'In-app player (user ids)';
+$string['mobileusersdesc'] = 'Comma-separated user ids that receive the player inside the Moodle app. <strong>Empty = nobody</strong>, which is the right value unless you are testing.<br />Note: the mobile addon is served to every app connected to this site, so a fault here does not only affect whoever opens a video — it can leave the app unable to load any course for everyone. That is why this list exists: without it there is no way to test without exposing learners.';
+$string['watermarkcolor'] = 'Watermark colour';
+$string['watermarkcolordesc'] = 'Colour of the overlay text. The white default reads best over most video: the closer the colour is to the footage, the less legible the watermark is if you ever need it as evidence.';
+$string['accessheading'] = 'Course access';
+$string['accessdesc'] = 'By default a video is only playable by users enrolled in the course where it is embedded.';
+$string['requirecourse'] = 'Require course enrolment';
+$string['requirecoursedesc'] = 'Block playback when the video is not embedded inside a course (or the user is not enrolled).';
+$string['bindip'] = 'Bind tokens to IP';
+$string['bindipdesc'] = 'Add the requester IP to the internal token payload for extra protection.';
+$string['tokenttl'] = 'Internal token TTL (seconds)';
+$string['tokenttldesc'] = 'How long a playlist token stays valid. Besides covering the whole viewing session, it must OUTLIVE the Reelo CloudFront signature (TTL = class duration + 30 min, 6 h ceiling): the 403 recovery reloads the playlist with this same token, and if the token expires before the signature the retry dies with a 403. The default (7 h = 25200 s) sits above the signature ceiling; do not set it below that.';
+$string['nocoursecontext'] = 'This video is only available inside a course.';
+$string['notenrolled'] = 'You are not enrolled in the course where this video is embedded.';
+$string['servicedenied'] = 'This site is not authorised to access the video service. Contact your site administrator.';
+$string['servicedown'] = 'The video service is temporarily unavailable. Try again in a moment.';
