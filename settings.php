@@ -2,14 +2,21 @@
 /**
  * Settings for the S3 Video filter.
  *
- * The Reelo backend URL (videos.dmarquez.com) is a constant in lib.php and
- * is intentionally NOT editable here. Only the tenant credential, the local
+ * The Reelo backend URL is a constant in lib.php (S3VIDEO_API_URL),
+ * deliberately NOT editable here. Only the tenant credential, the local
  * signing secret, and the watermark template are configured from Moodle.
  *
  * @package   filter_s3video
  */
 
 defined('MOODLE_INTERNAL') || die();
+
+// Moodle incluye este fichero al construir el árbol de administración, y lo
+// hace SIN cargar el lib.php del plugin. Sin este require, la constante
+// S3VIDEO_API_URL de más abajo no existe y la excepción no se queda en la
+// página de ajustes: revienta cualquier página que construya ese árbol, o
+// sea, el sitio entero. Comprobado en producción de la peor manera posible.
+require_once(__DIR__ . '/lib.php');
 
 if ($hassiteconfig) {
     $settings = new admin_settingpage('filter_s3video_settings', get_string('settings', 'filter_s3video'));
@@ -44,9 +51,25 @@ if ($hassiteconfig) {
         'filter_s3video/watermarktemplate',
         get_string('watermarktemplate', 'filter_s3video'),
         get_string('watermarktemplatedesc', 'filter_s3video'),
-        'name - dni',
+        '{fullname} - {idnumber}',
         PARAM_RAW,
         60
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'filter_s3video/mobileusers',
+        get_string('mobileusers', 'filter_s3video'),
+        get_string('mobileusersdesc', 'filter_s3video'),
+        '',
+        PARAM_RAW,
+        40
+    ));
+
+    $settings->add(new admin_setting_configcolourpicker(
+        'filter_s3video/watermarkcolor',
+        get_string('watermarkcolor', 'filter_s3video'),
+        get_string('watermarkcolordesc', 'filter_s3video'),
+        '#ffffff'
     ));
 
     $settings->add(new admin_setting_heading(

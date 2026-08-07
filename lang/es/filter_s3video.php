@@ -20,9 +20,13 @@ $string['apikeydesc'] = 'El token de API del tenant. Se obtiene de la consola ro
 $string['secretkey'] = 'Secreto de firma local';
 $string['secretkeydesc'] = 'Secreto usado para firmar los tokens internos entre el filtro y los endpoints playlist/embed. Debe ser aleatorio y privado.';
 $string['watermarkheading'] = 'Watermark';
-$string['watermarkdesc'] = 'El watermark es un overlay por usuario (\'{name}\' nombre completo, \'{dni}\' idnumber, o profile_field_XXX para un campo de perfil personalizado).';
+$string['watermarkdesc'] = 'El watermark es un texto superpuesto al vídeo, distinto para cada alumno, que identifica a quien lo está viendo.';
 $string['watermarktemplate'] = 'Plantilla del watermark';
-$string['watermarktemplatedesc'] = 'Tokens reemplazados por usuario: "name", "dni", o "profile_field_XXX". Ejemplo: "name - profile_field_dni".';
+$string['watermarktemplatedesc'] = 'Campos entre llaves, sustituidos por los datos de cada alumno; el resto del texto se deja tal cual. Ejemplo: <code>{firstname} - {profile_field_dni}</code>.<br />Disponibles: <code>{firstname}</code>, <code>{lastname}</code>, <code>{fullname}</code>, <code>{email}</code>, <code>{username}</code>, <code>{idnumber}</code>, <code>{alternatename}</code>, <code>{middlename}</code>, <code>{city}</code>, <code>{country}</code>, <code>{institution}</code>, <code>{department}</code>, <code>{phone1}</code>, <code>{phone2}</code> y <code>{profile_field_XXX}</code> para cualquier campo de perfil personalizado.<br />Un campo que el alumno tenga vacío se sustituye por nada (el separador que lo rodea sí se queda); un nombre de campo mal escrito se ve literal, lo que sirve para detectar la errata.';
+$string['mobileusers'] = 'Reproductor in-app (ids de usuario)';
+$string['mobileusersdesc'] = 'Ids de usuario separados por comas que reciben el reproductor dentro de la app de Moodle. <strong>Vacío = nadie</strong>, y es el valor correcto salvo que estés probando.<br />Ojo: el complemento móvil se sirve a todas las apps conectadas al sitio, así que un fallo aquí no afecta solo a quien abre un vídeo — puede dejar la app sin cargar ningún curso para todo el mundo. Por eso esta lista existe: sin ella no hay forma de probarlo sin exponer a los alumnos.';
+$string['watermarkcolor'] = 'Color del watermark';
+$string['watermarkcolordesc'] = 'Color del texto superpuesto. El blanco por defecto es el que mejor se lee sobre casi cualquier vídeo: cuanto más se parezca el color al de la imagen, menos legible será el watermark si hay que usarlo como prueba.';
 $string['accessheading'] = 'Acceso por curso';
 $string['accessdesc'] = 'Por defecto un video solo se puede reproducir si el usuario está matriculado en el curso donde está incrustado.';
 $string['requirecourse'] = 'Exigir matrícula en el curso';

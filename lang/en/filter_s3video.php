@@ -20,9 +20,13 @@ $string['apikeydesc'] = 'The tenant API token. It comes from the Reelo root cons
 $string['secretkey'] = 'Local signing secret';
 $string['secretkeydesc'] = 'A secret used to sign internal tokens between the filter and the playlist/embed endpoints. Keep it random and private.';
 $string['watermarkheading'] = 'Watermark';
-$string['watermarkdesc'] = 'The watermark is a per-user overlay (\'{name}\' full name, \'{dni}\' idnumber, or profile_field_XXX for a custom profile field).';
+$string['watermarkdesc'] = 'The watermark is a text overlay on the video, different for each learner, identifying whoever is watching.';
 $string['watermarktemplate'] = 'Watermark template';
-$string['watermarktemplatedesc'] = 'Tokens replaced per user: "name", "dni", or "profile_field_XXX". Example: "name - profile_field_dni".';
+$string['watermarktemplatedesc'] = 'Fields in braces are replaced with each learner\'s data; everything else is kept literally. Example: <code>{firstname} - {profile_field_dni}</code>.<br />Available: <code>{firstname}</code>, <code>{lastname}</code>, <code>{fullname}</code>, <code>{email}</code>, <code>{username}</code>, <code>{idnumber}</code>, <code>{alternatename}</code>, <code>{middlename}</code>, <code>{city}</code>, <code>{country}</code>, <code>{institution}</code>, <code>{department}</code>, <code>{phone1}</code>, <code>{phone2}</code>, and <code>{profile_field_XXX}</code> for any custom profile field.<br />A field the learner left empty is replaced with nothing (the separator around it stays); a misspelt field name shows up literally, which is how you spot the typo.';
+$string['mobileusers'] = 'In-app player (user ids)';
+$string['mobileusersdesc'] = 'Comma-separated user ids that receive the player inside the Moodle app. <strong>Empty = nobody</strong>, which is the right value unless you are testing.<br />Note: the mobile addon is served to every app connected to this site, so a fault here does not only affect whoever opens a video — it can leave the app unable to load any course for everyone. That is why this list exists: without it there is no way to test without exposing learners.';
+$string['watermarkcolor'] = 'Watermark colour';
+$string['watermarkcolordesc'] = 'Colour of the overlay text. The white default reads best over most video: the closer the colour is to the footage, the less legible the watermark is if you ever need it as evidence.';
 $string['accessheading'] = 'Course access';
 $string['accessdesc'] = 'By default a video is only playable by users enrolled in the course where it is embedded.';
 $string['requirecourse'] = 'Require course enrolment';

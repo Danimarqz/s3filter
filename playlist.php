@@ -17,10 +17,18 @@
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->dirroot . '/filter/s3video/lib.php');
 
+// Antes de nada, incluso antes de validar: el reproductor de la app pide esto
+// por XHR desde otro origen y sin CORS el navegador descarta la respuesta sin
+// mirarla, sea 200 o 403.
+s3video_send_cors_headers();
+
 $rawf = optional_param('f', null, PARAM_RAW_TRIMMED);
 $token = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
 $courseid = optional_param('c', 0, PARAM_INT);
+// Usuario firmado dentro del token (camino de la app, sin cookie de sesión).
+// Manipularlo invalida el HMAC, asi que no hace falta confiar en el valor.
+$userid = optional_param('u', 0, PARAM_INT);
 $audio = optional_param('a', 0, PARAM_INT);
 $rawr = optional_param('r', null, PARAM_RAW_TRIMMED);
 $rawvtt = optional_param('vtt', null, PARAM_ALPHANUMEXT);
@@ -73,22 +81,9 @@ if (empty($token) || empty($expires)) {
     s3video_playlist_fail(403, get_string('reopenthroughapp', 'filter_s3video'));
 }
 
-$ip = s3video_get_request_ip();
-if (!s3video_validate_token($path, $token, (int) $expires, (int) $courseid, $ip)) {
-    s3video_playlist_fail(403, get_string('tokeninvalid', 'filter_s3video'));
-}
-
-if ($courseid > 0) {
-    if (!s3video_user_can_access_course((int) $courseid)) {
-        s3video_playlist_fail(403, get_string('notenrolled', 'filter_s3video'));
-    }
-} else {
-    if (s3video_require_course()) {
-        s3video_playlist_fail(403, get_string('nocoursecontext', 'filter_s3video'));
-    }
-    if (!isloggedin() || isguestuser()) {
-        s3video_playlist_fail(403, get_string('reopenthroughapp', 'filter_s3video'));
-    }
+$denied = s3video_authorize_request($path, $token, (int) $expires, (int) $courseid, (int) $userid);
+if ($denied !== null) {
+    s3video_playlist_fail(403, get_string($denied, 'filter_s3video'));
 }
 
 /* --------------------------------------------------------------------- */
@@ -102,7 +97,7 @@ if ($courseid > 0) {
 $signpath = $path;
 
 $reason = null;
-$signature = s3video_fetch_signature($signpath, $reason);
+$signature = s3video_fetch_signature($signpath, $reason, (int) $userid);
 if ($signature === null) {
     $message = $reason === 'denied'
         ? get_string('servicedenied', 'filter_s3video')
@@ -145,6 +140,15 @@ if ($vttlang !== null) {
 /* Playlist                                                               */
 /* --------------------------------------------------------------------- */
 
+// Modo cookie: lo pide el reproductor con m=c, y solo se concede si el CDN
+// comparte dominio con este Moodle. No hace falta que el parámetro vaya
+// firmado: forzarlo solo consigue recibir URLs sin firma, que sin las cookies
+// no sirven para nada.
+$cookiemode = optional_param('modo', '', PARAM_ALPHA) === 'cookie'
+    && s3video_set_cloudfront_cookies($signature);
+
+// La descarga que hace el servidor sí va siempre firmada: las cookies son del
+// navegador del alumno, aquí no hay ninguna.
 $m3u8url = s3video_sign_url($signature['baseurl'] . '/' . s3video_encode_key($key), $signature);
 $m3u8content = s3video_fetch_remote($m3u8url);
 if ($m3u8content === false) {
@@ -153,17 +157,21 @@ if ($m3u8content === false) {
 
 if ($rendition === null && s3video_is_master_playlist($m3u8content)) {
     // Master playlist: point the renditions back at this script.
-    $output = s3video_rewrite_master_playlist($m3u8content, $path, (int) $courseid, $ip, (bool) $audio);
+    // $ip lo consumía el bloque de validación que ahora vive en
+    // s3video_authorize_request(); aquí hace falta para emitir los tokens de
+    // las renditions con la misma atadura a IP que el original.
+    $output = s3video_rewrite_master_playlist($m3u8content, $path, (int) $courseid,
+        s3video_get_request_ip(), (bool) $audio, (int) $userid, $cookiemode);
 } else {
     // Media playlist: turn every segment into a signed CloudFront URL.
     $basedir = trim(dirname($key), '/');
 
-    $resolvesegment = function (string $seg) use ($basedir, $signature): string {
+    $resolvesegment = function (string $seg) use ($basedir, $signature, $cookiemode): string {
         if (strncasecmp($seg, 'http://', 7) === 0 || strncasecmp($seg, 'https://', 8) === 0) {
-            return s3video_sign_url(strtok($seg, '?'), $signature);
+            return s3video_sign_url(strtok($seg, '?'), $signature, $cookiemode);
         }
         $segkey = ($basedir === '' ? $seg : $basedir . '/' . ltrim($seg, '/'));
-        return s3video_sign_url($signature['baseurl'] . '/' . s3video_encode_key($segkey), $signature);
+        return s3video_sign_url($signature['baseurl'] . '/' . s3video_encode_key($segkey), $signature, $cookiemode);
     };
 
     $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", $m3u8content));
