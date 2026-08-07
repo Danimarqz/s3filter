@@ -83,6 +83,30 @@
     document.head.appendChild(style);
   }
 
+  // Safe area para dispositivos con esquinas redondeadas / notch (iPhone X+,
+  // Android modernos). Sin esto, la barra de control de Video.js queda cortada
+  // por las esquinas de la pantalla: play/pause, barra de progreso y botón de
+  // pantalla completa no se ven o no se pueden pulsar.
+  function injectSafeAreaCSS() {
+    if (document.getElementById('s3video-safe-area')) { return; }
+    var style = document.createElement('style');
+    style.id = 's3video-safe-area';
+    style.textContent = [
+      '/* Safe area para esquinas redondeadas / notch */',
+      '.video-js .vjs-control-bar {',
+      '  padding-bottom: env(safe-area-inset-bottom, 0);',
+      '  padding-left: env(safe-area-inset-left, 0);',
+      '  padding-right: env(safe-area-inset-right, 0);',
+      '}',
+      '/* El botón grande de play también respeta el safe area en vertical */',
+      '.video-js .vjs-big-play-button {',
+      '  top: calc(50% + env(safe-area-inset-top, 0) / 2);',
+      '  left: calc(50% + (env(safe-area-inset-right, 0) - env(safe-area-inset-left, 0)) / 2);',
+      '}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
   function analytics(player, cfg) {
     if (!cfg.events || !cfg.subject) { return; }
     var queue = [];
@@ -153,6 +177,7 @@
     // alumno ve exactamente lo que veía antes de que existiera esto.
     loadCss(CFG.videojscss);
     applyColor(cfg.color);
+    injectSafeAreaCSS();
 
     diag('build:cargando-videojs');
     return loadScript(CFG.videojs).then(function() {
