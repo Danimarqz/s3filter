@@ -28,7 +28,7 @@ class text_filter extends \moodle_text_filter {
 
         static $pattern = '/\[(?:reelo|s3)(audio)?:([^\]]+)\]/';
 
-        $courseid = \access::courseid_from_context($this->context);
+        $courseid = access::courseid_from_context($this->context);
 
         return preg_replace_callback($pattern, function ($matches) use ($courseid) {
             $isaudio = $matches[1] === 'audio';
@@ -61,7 +61,7 @@ class text_filter extends \moodle_text_filter {
                 }
             }
 
-            return \player::render($filename, [
+            return player::render($filename, [
                 'audio' => $isaudio,
                 'subtitles' => $subtitles,
                 'courseid' => $courseid,
