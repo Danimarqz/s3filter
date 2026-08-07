@@ -1,6 +1,6 @@
 <?php
 /**
- * S3 Video filter for Moodle.
+ * Impronta filter for Moodle.
  *
  * Replaces [s3:Materia/Clase] (and [s3audio:...]) with a video player with
  * per-user watermark, course-based access control, and analytics. Also
@@ -13,10 +13,10 @@
  * The course is read from the filter's render context and signed into the
  * access token — the browser cannot change it.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 

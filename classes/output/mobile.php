@@ -1,10 +1,10 @@
 <?php
 // Soporte para la app de Moodle.
 
-namespace filter_s3video\output;
+namespace filter_impronta\output;
 
-use filter_s3video\config;
-use filter_s3video\player;
+use filter_impronta\config;
+use filter_impronta\player;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -14,13 +14,13 @@ defined('MOODLE_INTERNAL') || die();
  * Lo único que hace esta clase es entregar el arranque del reproductor. Los
  * datos de cada clase NO se piden desde la app: el filtro PHP corre
  * server-side y manda el marcador con la playlist firmada, el token y el
- * watermark ya resueltos (ver \filter_s3video\player::render). El apikey del
+ * watermark ya resueltos (ver \filter_impronta\player::render). El apikey del
  * tenant y el secreto de firma nunca bajan al dispositivo.
  */
 class mobile {
 
     /**
-     * Arranque del reproductor in-app: deja las rutas en window.s3videoApp y
+     * Arranque del reproductor in-app: deja las rutas en window.improntaApp y
      * carga js/app-player.js.
      *
      * El JavaScript de verdad está en ese fichero y no aquí porque esto es un
@@ -59,7 +59,7 @@ class mobile {
         $vjs = player::VIDEOJS;
         $cfg = json_encode([
             'wwwroot' => $CFG->wwwroot,
-            'componente' => 'filter_s3video',
+            'componente' => 'filter_impronta',
             'videojs' => "https://vjs.zencdn.net/{$vjs}/video.min.js",
             'videojscss' => "https://vjs.zencdn.net/{$vjs}/video-js.css",
             'watermarkjs' => player::asset_url('watermark.js'),
@@ -69,7 +69,7 @@ class mobile {
 
         $js = <<<JS
 (function() {
-  window.s3videoApp = {$cfg};
+  window.improntaApp = {$cfg};
   var s = document.createElement('script');
   s.src = {$appjs};
   s.async = false;

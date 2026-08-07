@@ -1,17 +1,17 @@
 <?php
 /**
- * Settings for the S3 Video filter.
+ * Settings for the Impronta filter.
  *
- * The Reelo backend URL is a class constant (\filter_s3video\reelo_api::URL),
+ * The Reelo backend URL is a class constant (\filter_impronta\reelo_api::URL),
  * deliberately NOT editable here. Only the tenant credential, the local
  * signing secret, and the watermark template are configured from Moodle.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-use filter_s3video\reelo_api;
+use filter_impronta\reelo_api;
 
 // Moodle incluye este fichero al construir el árbol de administración, y lo
 // hace SIN cargar ningún lib.php del plugin. De ahí que todo lo que use este
@@ -22,83 +22,83 @@ use filter_s3video\reelo_api;
 // 2026-08-06.
 
 if ($hassiteconfig) {
-    $settings = new admin_settingpage('filter_s3video_settings', get_string('settings', 'filter_s3video'));
+    $settings = new admin_settingpage('filter_impronta_settings', get_string('settings', 'filter_impronta'));
 
     $settings->add(new admin_setting_heading(
-        'filter_s3video/backend',
-        get_string('backendheading', 'filter_s3video'),
-        get_string('backenddesc', 'filter_s3video', reelo_api::URL)
+        'filter_impronta/backend',
+        get_string('backendheading', 'filter_impronta'),
+        get_string('backenddesc', 'filter_impronta', reelo_api::URL)
     ));
 
     $settings->add(new admin_setting_configpasswordunmask(
-        'filter_s3video/apikey',
-        get_string('apikey', 'filter_s3video'),
-        get_string('apikeydesc', 'filter_s3video'),
+        'filter_impronta/apikey',
+        get_string('apikey', 'filter_impronta'),
+        get_string('apikeydesc', 'filter_impronta'),
         ''
     ));
 
     $settings->add(new admin_setting_configpasswordunmask(
-        'filter_s3video/secretkey',
-        get_string('secretkey', 'filter_s3video'),
-        get_string('secretkeydesc', 'filter_s3video'),
+        'filter_impronta/secretkey',
+        get_string('secretkey', 'filter_impronta'),
+        get_string('secretkeydesc', 'filter_impronta'),
         ''
     ));
 
     $settings->add(new admin_setting_heading(
-        'filter_s3video/watermark',
-        get_string('watermarkheading', 'filter_s3video'),
-        get_string('watermarkdesc', 'filter_s3video')
+        'filter_impronta/watermark',
+        get_string('watermarkheading', 'filter_impronta'),
+        get_string('watermarkdesc', 'filter_impronta')
     ));
 
     $settings->add(new admin_setting_configtext(
-        'filter_s3video/watermarktemplate',
-        get_string('watermarktemplate', 'filter_s3video'),
-        get_string('watermarktemplatedesc', 'filter_s3video'),
+        'filter_impronta/watermarktemplate',
+        get_string('watermarktemplate', 'filter_impronta'),
+        get_string('watermarktemplatedesc', 'filter_impronta'),
         '{fullname} - {idnumber}',
         PARAM_RAW,
         60
     ));
 
     $settings->add(new admin_setting_configtext(
-        'filter_s3video/mobileusers',
-        get_string('mobileusers', 'filter_s3video'),
-        get_string('mobileusersdesc', 'filter_s3video'),
+        'filter_impronta/mobileusers',
+        get_string('mobileusers', 'filter_impronta'),
+        get_string('mobileusersdesc', 'filter_impronta'),
         '',
         PARAM_RAW,
         40
     ));
 
     $settings->add(new admin_setting_configcolourpicker(
-        'filter_s3video/watermarkcolor',
-        get_string('watermarkcolor', 'filter_s3video'),
-        get_string('watermarkcolordesc', 'filter_s3video'),
+        'filter_impronta/watermarkcolor',
+        get_string('watermarkcolor', 'filter_impronta'),
+        get_string('watermarkcolordesc', 'filter_impronta'),
         '#ffffff'
     ));
 
     $settings->add(new admin_setting_heading(
-        'filter_s3video/access',
-        get_string('accessheading', 'filter_s3video'),
-        get_string('accessdesc', 'filter_s3video')
+        'filter_impronta/access',
+        get_string('accessheading', 'filter_impronta'),
+        get_string('accessdesc', 'filter_impronta')
     ));
 
     $settings->add(new admin_setting_configcheckbox(
-        'filter_s3video/requirecourse',
-        get_string('requirecourse', 'filter_s3video'),
-        get_string('requirecoursedesc', 'filter_s3video'),
+        'filter_impronta/requirecourse',
+        get_string('requirecourse', 'filter_impronta'),
+        get_string('requirecoursedesc', 'filter_impronta'),
         '1'
     ));
 
     $settings->add(new admin_setting_configcheckbox(
-        'filter_s3video/bindip',
-        get_string('bindip', 'filter_s3video'),
-        get_string('bindipdesc', 'filter_s3video'),
+        'filter_impronta/bindip',
+        get_string('bindip', 'filter_impronta'),
+        get_string('bindipdesc', 'filter_impronta'),
         '0'
     ));
 
     $settings->add(new admin_setting_configtext(
-        'filter_s3video/tokenttl',
-        get_string('tokenttl', 'filter_s3video'),
-        get_string('tokenttldesc', 'filter_s3video'),
+        'filter_impronta/tokenttl',
+        get_string('tokenttl', 'filter_impronta'),
+        get_string('tokenttldesc', 'filter_impronta'),
         25200,
         PARAM_INT,
         10

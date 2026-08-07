@@ -1,19 +1,19 @@
 <?php
 /**
- * Upgrade steps for the S3 Video filter.
+ * Upgrade steps for the Impronta filter.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Execute filter_s3video upgrades from the given version.
+ * Execute filter_impronta upgrades from the given version.
  *
  * @param int $oldversion the version we are upgrading from
  * @return bool
  */
-function xmldb_filter_s3video_upgrade($oldversion) {
+function xmldb_filter_impronta_upgrade($oldversion) {
     if ($oldversion < 2026080502) {
         // Plan TTL corto, fase 0.2 — invariante de tokenttl.
         //
@@ -26,12 +26,12 @@ function xmldb_filter_s3video_upgrade($oldversion) {
         // instalados. Solo si está estrictamente por debajo del techo de la
         // firma — una configuración manual de 22000 ya cumple la invariante y
         // se respeta.
-        $current = get_config('filter_s3video', 'tokenttl');
+        $current = get_config('filter_impronta', 'tokenttl');
         if ($current !== false && (int) $current > 0 && (int) $current < 21600) {
-            set_config('tokenttl', 25200, 'filter_s3video');
+            set_config('tokenttl', 25200, 'filter_impronta');
         }
 
-        upgrade_plugin_savepoint(true, 2026080502, 'filter', 's3video');
+        upgrade_plugin_savepoint(true, 2026080502, 'filter', 'impronta');
     }
 
     return true;

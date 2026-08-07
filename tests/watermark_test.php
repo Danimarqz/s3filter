@@ -5,20 +5,20 @@
 // valores salen del perfil de cada alumno y acaban en un <script>, y el
 // color acaba dentro de un bloque <style>.
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * @covers \filter_s3video\watermark
- * @covers \filter_s3video\token
+ * @covers \filter_impronta\watermark
+ * @covers \filter_impronta\token
  */
 class watermark_test extends \advanced_testcase {
 
     /** Plantilla con llaves, que es la forma documentada. */
     public function test_label_con_llaves(): void {
         $this->resetAfterTest();
-        set_config('watermarktemplate', '{firstname} - {idnumber}', 'filter_s3video');
+        set_config('watermarktemplate', '{firstname} - {idnumber}', 'filter_impronta');
 
         $user = $this->getDataGenerator()->create_user([
             'firstname' => 'Juan',
@@ -36,7 +36,7 @@ class watermark_test extends \advanced_testcase {
      */
     public function test_label_formato_antiguo_sin_llaves(): void {
         $this->resetAfterTest();
-        set_config('watermarktemplate', 'name - dni', 'filter_s3video');
+        set_config('watermarktemplate', 'name - dni', 'filter_impronta');
 
         $user = $this->getDataGenerator()->create_user([
             'firstname' => 'Ana',
@@ -50,7 +50,7 @@ class watermark_test extends \advanced_testcase {
     /** Un campo permitido pero vacío se sustituye por nada, no se deja literal. */
     public function test_campo_vacio_se_sustituye_por_nada(): void {
         $this->resetAfterTest();
-        set_config('watermarktemplate', '{firstname}{idnumber}', 'filter_s3video');
+        set_config('watermarktemplate', '{firstname}{idnumber}', 'filter_impronta');
 
         $user = $this->getDataGenerator()->create_user(['firstname' => 'Lucía', 'idnumber' => '']);
 
@@ -60,7 +60,7 @@ class watermark_test extends \advanced_testcase {
     /** Un token que no existe se deja literal, para que se vea la errata. */
     public function test_token_desconocido_se_deja_literal(): void {
         $this->resetAfterTest();
-        set_config('watermarktemplate', '{firstname} {noexiste}', 'filter_s3video');
+        set_config('watermarktemplate', '{firstname} {noexiste}', 'filter_impronta');
 
         $user = $this->getDataGenerator()->create_user(['firstname' => 'Marta']);
 
@@ -106,8 +106,8 @@ class watermark_test extends \advanced_testcase {
      */
     public function test_token_atado_a_usuario(): void {
         $this->resetAfterTest();
-        set_config('secretkey', 'un-secreto-de-pruebas', 'filter_s3video');
-        set_config('bindip', 0, 'filter_s3video');
+        set_config('secretkey', 'un-secreto-de-pruebas', 'filter_impronta');
+        set_config('bindip', 0, 'filter_impronta');
 
         $path = 'Materia/Clase';
         $expires = time() + 3600;
@@ -134,8 +134,8 @@ class watermark_test extends \advanced_testcase {
      */
     public function test_token_sin_usuario_sigue_validando(): void {
         $this->resetAfterTest();
-        set_config('secretkey', 'un-secreto-de-pruebas', 'filter_s3video');
-        set_config('bindip', 0, 'filter_s3video');
+        set_config('secretkey', 'un-secreto-de-pruebas', 'filter_impronta');
+        set_config('bindip', 0, 'filter_impronta');
 
         $expires = time() + 3600;
         $viejo = token::generate('Materia/Clase', $expires, 5, '203.0.113.7');
@@ -152,7 +152,7 @@ class watermark_test extends \advanced_testcase {
 
         $validos = ['#fff', '#ffffff', '#FF0000', '#12345678'];
         foreach ($validos as $color) {
-            set_config('watermarkcolor', $color, 'filter_s3video');
+            set_config('watermarkcolor', $color, 'filter_impronta');
             $this->assertSame($color, watermark::color());
         }
 
@@ -164,7 +164,7 @@ class watermark_test extends \advanced_testcase {
             '',
         ];
         foreach ($invalidos as $color) {
-            set_config('watermarkcolor', $color, 'filter_s3video');
+            set_config('watermarkcolor', $color, 'filter_impronta');
             $this->assertSame('#ffffff', watermark::color());
         }
     }

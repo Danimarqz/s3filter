@@ -2,10 +2,10 @@
 /**
  * Etiqueta del watermark por usuario.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 

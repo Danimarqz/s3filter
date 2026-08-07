@@ -3,7 +3,7 @@
 //
 // Va aparte del HTML del reproductor porque ese HTML se cachea por vídeo y
 // esto NO se puede cachear: la etiqueta del watermark y el subject de la
-// analítica son de cada alumno. \filter_s3video\player::extras imprime una
+// analítica son de cada alumno. \filter_impronta\player::extras imprime una
 // llamada a ReeloPlayerExtras() por vídeo con esos datos ya resueltos.
 //
 // El beacon apunta a events.php de este mismo plugin, que valida el mismo

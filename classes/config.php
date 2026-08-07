@@ -1,11 +1,11 @@
 <?php
 /**
- * Ajustes del plugin (filter_s3video/...).
+ * Ajustes del plugin (filter_impronta/...).
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -22,7 +22,7 @@ class config {
      * @return mixed
      */
     public static function get(string $name, $default = null) {
-        $value = get_config('filter_s3video', $name);
+        $value = get_config('filter_impronta', $name);
         return ($value === false) ? $default : $value;
     }
 
@@ -36,7 +36,7 @@ class config {
     public static function required(string $name): string {
         $value = self::get($name);
         if ($value === null || $value === '') {
-            throw new \coding_exception('Missing required Reelo configuration: filter_s3video/' . $name);
+            throw new \coding_exception('Missing required Reelo configuration: filter_impronta/' . $name);
         }
         return (string) $value;
     }

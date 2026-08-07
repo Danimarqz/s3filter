@@ -6,10 +6,10 @@
  * único que toca el apikey. Nada de lo que hay aquí puede ejecutarse en el
  * navegador del alumno.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -100,7 +100,7 @@ class reelo_api {
 
         $reason = null;
 
-        $cache = \cache::make_from_params(\cache_store::MODE_APPLICATION, 'filter_s3video', 'signatures');
+        $cache = \cache::make_from_params(\cache_store::MODE_APPLICATION, 'filter_impronta', 'signatures');
         $cachekey = sha1($path);
 
         $cached = $cache->get($cachekey);
@@ -141,18 +141,18 @@ class reelo_api {
         $httpcode = (int) ($info['http_code'] ?? 0);
 
         if ($curl->get_errno()) {
-            debugging('filter_s3video: Reelo API unreachable: ' . $curl->error, DEBUG_NORMAL);
+            debugging('filter_impronta: Reelo API unreachable: ' . $curl->error, DEBUG_NORMAL);
             $reason = 'unavailable';
             return null;
         }
         if ($httpcode === 401 || $httpcode === 403 || $httpcode === 409) {
             // Apikey mala o revocada, o tenant desactivado. No es transitorio.
-            debugging('filter_s3video: Reelo API rejected this site (HTTP ' . $httpcode . ')', DEBUG_NORMAL);
+            debugging('filter_impronta: Reelo API rejected this site (HTTP ' . $httpcode . ')', DEBUG_NORMAL);
             $reason = 'denied';
             return null;
         }
         if ($httpcode < 200 || $httpcode >= 300) {
-            debugging('filter_s3video: Reelo API returned HTTP ' . $httpcode, DEBUG_NORMAL);
+            debugging('filter_impronta: Reelo API returned HTTP ' . $httpcode, DEBUG_NORMAL);
             $reason = 'unavailable';
             return null;
         }
@@ -163,7 +163,7 @@ class reelo_api {
                 || empty($decoded['policy'])
                 || empty($decoded['signature'])
                 || empty($decoded['keyPairId'])) {
-            debugging('filter_s3video: malformed response from the Reelo API', DEBUG_NORMAL);
+            debugging('filter_impronta: malformed response from the Reelo API', DEBUG_NORMAL);
             $reason = 'unavailable';
             return null;
         }
@@ -207,7 +207,7 @@ class reelo_api {
 
         $apikey = (string) config::get('apikey', '');
         if ($apikey === '') {
-            error_log('filter_s3video: no apikey configured; dropping analytics batch');
+            error_log('filter_impronta: no apikey configured; dropping analytics batch');
             return false;
         }
 

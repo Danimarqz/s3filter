@@ -2,10 +2,10 @@
 /**
  * Manejo de playlists HLS.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -83,7 +83,7 @@ class hls {
                 $params['a'] = 1;
             }
             $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
-            return $CFG->wwwroot . '/filter/s3video/playlist.php?' . $query;
+            return $CFG->wwwroot . '/filter/impronta/playlist.php?' . $query;
         };
 
         $normalized = str_replace(["\r\n", "\r"], "\n", $content);

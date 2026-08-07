@@ -13,14 +13,14 @@
  * enrolled in the course. Events naming any other video are dropped rather
  * than forwarded.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
 require_once(__DIR__ . '/../../config.php');
 
-use filter_s3video\reelo_api;
-use filter_s3video\request;
-use filter_s3video\token;
+use filter_impronta\reelo_api;
+use filter_impronta\request;
+use filter_impronta\token;
 
 // Igual que playlist.php, y además contestando al OPTIONS: el beacon de la app
 // es un POST con Content-Type JSON, que dispara comprobación previa.
@@ -36,7 +36,7 @@ $userid = optional_param('u', 0, PARAM_INT);
 /**
  * Ends the request with a bare status code (no body worth leaking).
  */
-function s3video_events_fail(int $status): void {
+function impronta_events_fail(int $status): void {
     http_response_code($status);
     header('Content-Type: text/plain; charset=utf-8');
     exit;
@@ -44,20 +44,20 @@ function s3video_events_fail(int $status): void {
 
 $path = trim(preg_replace('#/+#', '/', str_replace('\\', '/', (string) $rawf)), '/');
 if ($path === '' || strpos($path, '..') !== false) {
-    s3video_events_fail(400);
+    impronta_events_fail(400);
 }
 
 if (empty($token) || empty($expires)) {
-    s3video_events_fail(403);
+    impronta_events_fail(403);
 }
 
 if (token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid) !== null) {
-    s3video_events_fail(403);
+    impronta_events_fail(403);
 }
 
 $payload = json_decode((string) file_get_contents('php://input'), true);
 if (!is_array($payload)) {
-    s3video_events_fail(400);
+    impronta_events_fail(400);
 }
 
 // El subject es determinista desde el id de usuario y el secret del plugin
@@ -69,7 +69,7 @@ if (!is_array($payload)) {
 $subject = reelo_api::subject((int) $userid);
 $events = isset($payload['events']) && is_array($payload['events']) ? $payload['events'] : [];
 if (empty($events)) {
-    s3video_events_fail(400);
+    impronta_events_fail(400);
 }
 
 // Cómo se está autorizando el media y desde dónde se reproduce. Las dos las
@@ -119,11 +119,11 @@ foreach ($events as $ev) {
 }
 
 if (empty($clean)) {
-    s3video_events_fail(400);
+    impronta_events_fail(400);
 }
 
 if (!reelo_api::post_events(['subject' => $subject, 'events' => $clean])) {
-    s3video_events_fail(502);
+    impronta_events_fail(502);
 }
 
 http_response_code(204);

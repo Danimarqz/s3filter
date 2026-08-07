@@ -5,10 +5,10 @@
  * La firma la emite Reelo (ver reelo_api::signature). Aquí solo se decide cómo
  * viaja hasta el navegador y cómo se pide el media con ella.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -173,7 +173,7 @@ class cloudfront {
             }
 
             $safeurl = strtok($url, '?');
-            error_log("filter_s3video: fetch {$attempt}/{$retries} failed for [{$safeurl}]. "
+            error_log("filter_impronta: fetch {$attempt}/{$retries} failed for [{$safeurl}]. "
                 . "HTTP {$http}. curl [{$err}] {$errmsg}");
         }
 

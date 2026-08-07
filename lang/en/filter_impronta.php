@@ -1,5 +1,5 @@
 <?php
-$string['pluginname'] = 'S3 Video filter';
+$string['pluginname'] = 'Impronta';
 $string['notsupported'] = 'Your browser does not support the video tag.';
 $string['openvideo'] = 'Open video';
 $string['openvideoinfo'] = 'The video will open in your browser.';
@@ -13,10 +13,10 @@ $string['manualenrolrequired'] = 'Your account must have an active manual enrolm
 
 // Settings.
 $string['settings'] = 'Backend and watermark';
-$string['backendheading'] = 'Reelo backend';
-$string['backenddesc'] = 'The plugin is tied to the Reelo deployment at {$a}. This URL is fixed and cannot be changed here.';
-$string['apikey'] = 'Reelo API key';
-$string['apikeydesc'] = 'The tenant API token. It comes from the Reelo root console (tenant detail) and can be rotated there.';
+$string['backendheading'] = 'Impronta backend';
+$string['backenddesc'] = 'The plugin is tied to the Impronta deployment at {$a}. This URL is fixed and cannot be changed here.';
+$string['apikey'] = 'Impronta API key';
+$string['apikeydesc'] = 'The tenant API token. It comes from the Impronta root console (tenant detail) and can be rotated there.';
 $string['secretkey'] = 'Local signing secret';
 $string['secretkeydesc'] = 'A secret used to sign internal tokens between the filter and the playlist/embed endpoints. Keep it random and private.';
 $string['watermarkheading'] = 'Watermark';
@@ -34,7 +34,7 @@ $string['requirecoursedesc'] = 'Block playback when the video is not embedded in
 $string['bindip'] = 'Bind tokens to IP';
 $string['bindipdesc'] = 'Add the requester IP to the internal token payload for extra protection.';
 $string['tokenttl'] = 'Internal token TTL (seconds)';
-$string['tokenttldesc'] = 'How long a playlist token stays valid. Besides covering the whole viewing session, it must OUTLIVE the Reelo CloudFront signature (TTL = class duration + 30 min, 6 h ceiling): the 403 recovery reloads the playlist with this same token, and if the token expires before the signature the retry dies with a 403. The default (7 h = 25200 s) sits above the signature ceiling; do not set it below that.';
+$string['tokenttldesc'] = 'How long a playlist token stays valid. Besides covering the whole viewing session, it must OUTLIVE the Impronta CloudFront signature (TTL = class duration + 30 min, 6 h ceiling): the 403 recovery reloads the playlist with this same token, and if the token expires before the signature the retry dies with a 403. The default (7 h = 25200 s) sits above the signature ceiling; do not set it below that.';
 $string['nocoursecontext'] = 'This video is only available inside a course.';
 $string['notenrolled'] = 'You are not enrolled in the course where this video is embedded.';
 $string['servicedenied'] = 'This site is not authorised to access the video service. Contact your site administrator.';

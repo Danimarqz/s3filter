@@ -8,10 +8,10 @@
  *     js/app-player.js dentro del webview
  *   - sin permiso: un aviso en lugar del reproductor
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -35,7 +35,7 @@ class player {
      */
     public static function asset_url(string $file): string {
         global $CFG;
-        return $CFG->wwwroot . '/filter/s3video/' . $file . '?v=' . (int) config::get('version', 0);
+        return $CFG->wwwroot . '/filter/impronta/' . $file . '?v=' . (int) config::get('version', 0);
     }
 
     /**
@@ -61,7 +61,7 @@ class player {
      */
     public static function notice(string $identifier): string {
         return '<div class="alert alert-warning" role="alert">'
-            . s(get_string($identifier, 'filter_s3video'))
+            . s(get_string($identifier, 'filter_impronta'))
             . '</div>';
     }
 
@@ -192,7 +192,7 @@ class player {
         $embedurl = token::endpoint_url('embed.php', $filename, $token, $expires, $courseid,
             $tokenuserid, $isaudio ? ['a' => 1] : []);
 
-        $buttontext = get_string('openvideo', 'filter_s3video');
+        $buttontext = get_string('openvideo', 'filter_impronta');
 
         if ($ismobileapp) {
             return self::app_marker($filename, $playlisturl, $embedurl, $token, $expires,
@@ -314,7 +314,7 @@ HTML;
             string $buttontext): string {
         global $USER;
 
-        $infotext = get_string('openvideoinfo', 'filter_s3video');
+        $infotext = get_string('openvideoinfo', 'filter_impronta');
         $embedhref = s($embedurl);
 
         // Esta rama solo corre en la petición del web service de la app
@@ -331,11 +331,11 @@ HTML;
         ];
         $attrs = '';
         foreach ($data as $key => $value) {
-            $attrs .= ' data-s3video-' . $key . '="' . s((string) $value) . '"';
+            $attrs .= ' data-impronta-' . $key . '="' . s((string) $value) . '"';
         }
 
         return <<<HTML
-<div class="filter_s3video-app-player"{$attrs} style="text-align:center; padding:1em;">
+<div class="filter_impronta-app-player"{$attrs} style="text-align:center; padding:1em;">
   <a href="{$embedhref}" target="_blank"
      style="display:inline-block; background:#1976d2; color:#fff;
             padding:0.8em 1.2em; border-radius:6px;
@@ -382,7 +382,7 @@ HTML;
                 'c' => $courseid,
             ];
             $trackquery = http_build_query($trackparams, '', '&', PHP_QUERY_RFC3986);
-            $trackurl = $CFG->wwwroot . '/filter/s3video/playlist.php?' . $trackquery;
+            $trackurl = $CFG->wwwroot . '/filter/impronta/playlist.php?' . $trackquery;
             $label = $langnames[$lang] ?? strtoupper($lang);
             $trackshtml .= '  <track kind="subtitles" srclang="' . s($lang) . '" label="' . s($label)
                 . '" src="' . s($trackurl) . "\">\n";
@@ -433,7 +433,7 @@ HTML;
             'subject' => reelo_api::subject($userid),
             'videoPath' => $filename,
             'playlistUrl' => $playlisturl,
-            'expiredText' => s(get_string('sessionexpired', 'filter_s3video')),
+            'expiredText' => s(get_string('sessionexpired', 'filter_impronta')),
             'heartbeatSeconds' => 15,
         ];
 

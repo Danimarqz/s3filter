@@ -11,16 +11,16 @@
  *   2. The CloudFront signature is requested from Reelo with this site's
  *      API key, and Reelo scopes it to this class alone.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
 require_once(__DIR__ . '/../../config.php');
 
-use filter_s3video\cloudfront;
-use filter_s3video\hls;
-use filter_s3video\reelo_api;
-use filter_s3video\request;
-use filter_s3video\token;
+use filter_impronta\cloudfront;
+use filter_impronta\hls;
+use filter_impronta\reelo_api;
+use filter_impronta\request;
+use filter_impronta\token;
 
 // Antes de nada, incluso antes de validar: el reproductor de la app pide esto
 // por XHR desde otro origen y sin CORS el navegador descarta la respuesta sin
@@ -41,7 +41,7 @@ $rawvtt = optional_param('vtt', null, PARAM_ALPHANUMEXT);
 /**
  * Ends the request with a plain-text error.
  */
-function s3video_playlist_fail(int $status, string $message): void {
+function impronta_playlist_fail(int $status, string $message): void {
     http_response_code($status);
     header('Content-Type: text/plain; charset=utf-8');
     echo '# ' . $message;
@@ -49,7 +49,7 @@ function s3video_playlist_fail(int $status, string $message): void {
 }
 
 if (empty($rawf)) {
-    s3video_playlist_fail(400, 'Falta el parámetro f.');
+    impronta_playlist_fail(400, 'Falta el parámetro f.');
 }
 
 // `r` (rendition): .m3u8 basename, no path separators.
@@ -57,7 +57,7 @@ $rendition = null;
 if ($rawr !== null && $rawr !== '') {
     $candidate = basename(str_replace('\\', '/', $rawr));
     if ($candidate !== $rawr || strpos($rawr, '..') !== false || !hls::is_safe_rendition($candidate)) {
-        s3video_playlist_fail(400, 'Parámetro r inválido.');
+        impronta_playlist_fail(400, 'Parámetro r inválido.');
     }
     $rendition = $candidate;
 }
@@ -67,7 +67,7 @@ $vttlang = null;
 if ($rawvtt !== null && $rawvtt !== '') {
     $candidatevtt = strtolower($rawvtt);
     if (!preg_match('/^[a-z0-9\-]{2,5}$/', $candidatevtt)) {
-        s3video_playlist_fail(400, 'Idioma de subtítulos inválido.');
+        impronta_playlist_fail(400, 'Idioma de subtítulos inválido.');
     }
     $vttlang = $candidatevtt;
 }
@@ -75,7 +75,7 @@ if ($rawvtt !== null && $rawvtt !== '') {
 // Normalise the logical path.
 $path = trim(preg_replace('#/+#', '/', str_replace('\\', '/', $rawf)), '/');
 if ($path === '' || strpos($path, '..') !== false) {
-    s3video_playlist_fail(400, 'Ruta inválida.');
+    impronta_playlist_fail(400, 'Ruta inválida.');
 }
 
 /* --------------------------------------------------------------------- */
@@ -83,12 +83,12 @@ if ($path === '' || strpos($path, '..') !== false) {
 /* --------------------------------------------------------------------- */
 
 if (empty($token) || empty($expires)) {
-    s3video_playlist_fail(403, get_string('reopenthroughapp', 'filter_s3video'));
+    impronta_playlist_fail(403, get_string('reopenthroughapp', 'filter_impronta'));
 }
 
 $denied = token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid);
 if ($denied !== null) {
-    s3video_playlist_fail(403, get_string($denied, 'filter_s3video'));
+    impronta_playlist_fail(403, get_string($denied, 'filter_impronta'));
 }
 
 /* --------------------------------------------------------------------- */
@@ -105,9 +105,9 @@ $reason = null;
 $signature = reelo_api::signature($signpath, $reason, (int) $userid);
 if ($signature === null) {
     $message = $reason === 'denied'
-        ? get_string('servicedenied', 'filter_s3video')
-        : get_string('servicedown', 'filter_s3video');
-    s3video_playlist_fail($reason === 'denied' ? 403 : 503, $message);
+        ? get_string('servicedenied', 'filter_impronta')
+        : get_string('servicedown', 'filter_impronta');
+    impronta_playlist_fail($reason === 'denied' ? 403 : 503, $message);
 }
 
 $basename = basename($path);
@@ -157,7 +157,7 @@ $cookiemode = optional_param('modo', '', PARAM_ALPHA) === 'cookie'
 $m3u8url = cloudfront::sign_url($signature['baseurl'] . '/' . cloudfront::encode_key($key), $signature);
 $m3u8content = cloudfront::fetch($m3u8url);
 if ($m3u8content === false) {
-    s3video_playlist_fail(502, 'No se pudo obtener la playlist.');
+    impronta_playlist_fail(502, 'No se pudo obtener la playlist.');
 }
 
 if ($rendition === null && hls::is_master($m3u8content)) {

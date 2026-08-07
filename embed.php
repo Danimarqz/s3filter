@@ -11,13 +11,13 @@
  * course, plus a live enrolment check — because this endpoint is reachable
  * directly and must not be weaker than the one it links to.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
 require_once(__DIR__ . '/../../config.php');
 
-use filter_s3video\player;
-use filter_s3video\token;
+use filter_impronta\player;
+use filter_impronta\token;
 
 $rawf = optional_param('f', null, PARAM_RAW_TRIMMED);
 $token = optional_param('t', null, PARAM_ALPHANUMEXT);
@@ -31,12 +31,12 @@ $userid = optional_param('u', 0, PARAM_INT);
 /**
  * Renders a standalone dark page with one or more messages and stops.
  */
-function s3video_embed_fail(int $status, array $messages): void {
+function impronta_embed_fail(int $status, array $messages): void {
     http_response_code($status);
     header('Content-Type: text/html; charset=utf-8');
     echo '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
         . '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        . '<title>' . s(get_string('pluginname', 'filter_s3video')) . '</title>'
+        . '<title>' . s(get_string('pluginname', 'filter_impronta')) . '</title>'
         . '<style>body{font-family:sans-serif;padding:1.5em;background:#111;color:#fff}'
         . 'a{color:#4fc3f7}</style></head><body>';
     foreach ($messages as $message) {
@@ -47,33 +47,33 @@ function s3video_embed_fail(int $status, array $messages): void {
 }
 
 if (empty($rawf)) {
-    s3video_embed_fail(400, [s(get_string('missingfilename', 'filter_s3video'))]);
+    impronta_embed_fail(400, [s(get_string('missingfilename', 'filter_impronta'))]);
 }
 
 $filename = trim(preg_replace('#/+#', '/', str_replace('\\', '/', $rawf)), '/');
 if ($filename === '' || strpos($filename, '..') !== false) {
-    s3video_embed_fail(400, [s(get_string('missingfilename', 'filter_s3video'))]);
+    impronta_embed_fail(400, [s(get_string('missingfilename', 'filter_impronta'))]);
 }
 
 if (empty($token) || empty($expires)) {
-    s3video_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_s3video'))]);
+    impronta_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_impronta'))]);
 }
 
 $denied = token::authorize($filename, $token, (int) $expires, (int) $courseid, (int) $userid);
 if ($denied !== null) {
-    $messages = [s(get_string($denied, 'filter_s3video'))];
+    $messages = [s(get_string($denied, 'filter_impronta'))];
 
     // Caso típico desde el móvil: el enlace se abrió en un navegador donde hay
     // otra sesión de Moodle distinta a la del alumno que lo generó. Decirlo y
     // ofrecer cerrar sesión ahorra el "no funciona" sin más.
     if ($denied === 'notenrolled' && isloggedin() && !isguestuser()) {
-        $messages[] = s(get_string('sessionconflict', 'filter_s3video', format_string(fullname($USER, true))));
+        $messages[] = s(get_string('sessionconflict', 'filter_impronta', format_string(fullname($USER, true))));
         $logouturl = new moodle_url('/login/logout.php', ['sesskey' => sesskey()]);
         $messages[] = '<a href="' . s($logouturl->out(false)) . '">'
-            . s(get_string('logoutandretry', 'filter_s3video')) . '</a>';
+            . s(get_string('logoutandretry', 'filter_impronta')) . '</a>';
     }
 
-    s3video_embed_fail(403, $messages);
+    impronta_embed_fail(403, $messages);
 }
 
 $playeroptions = [
@@ -90,7 +90,7 @@ $playeroptions = [
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title><?php echo s(get_string('pluginname', 'filter_s3video')); ?></title>
+  <title><?php echo s(get_string('pluginname', 'filter_impronta')); ?></title>
   <style>
     html,body{
       margin:0;padding:0;background:#000;color:#fff;

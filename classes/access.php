@@ -6,10 +6,10 @@
  * identidad del curso sale del contexto de render del filtro, así que no es
  * algo que el navegador pueda cambiar.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 

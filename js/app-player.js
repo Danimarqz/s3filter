@@ -1,7 +1,7 @@
 // Reproductor in-app para la app de Moodle.
 //
-// Lo carga el bootstrap que devuelve \filter_s3video\output\mobile::mobile_init,
-// que además deja en window.s3videoApp las rutas que solo sabe el servidor.
+// Lo carga el bootstrap que devuelve \filter_impronta\output\mobile::mobile_init,
+// que además deja en window.improntaApp las rutas que solo sabe el servidor.
 // Aquí no hay nada secreto ni se le pregunta nada a la app: el marcador que
 // pinta el filtro ya trae la playlist firmada, el token y el watermark
 // resuelto.
@@ -18,7 +18,7 @@
 // cargar ningún curso, para todos los usuarios.
 //
 // Sin registrar nada, el servidor sigue filtrando y manda el marcador ya
-// firmado (ver la rama de app de \filter_s3video\player::render). Aquí solo
+// firmado (ver la rama de app de \filter_impronta\player::render). Aquí solo
 // hay que encontrarlo y convertirlo en reproductor. Un observador del DOM no
 // participa en el renderizado del contenido, así que en el peor caso no
 // aparece el reproductor y queda el botón de abrir en el navegador — nunca
@@ -26,7 +26,7 @@
 (function() {
   'use strict';
 
-  var CFG = window.s3videoApp || {};
+  var CFG = window.improntaApp || {};
   var WWWROOT = CFG.wwwroot;
   var COMPONENTE = CFG.componente;
   var SELECTOR = '.' + COMPONENTE + '-app-player';
@@ -39,7 +39,7 @@
   //   sudo tail -f /opt/bitnami/apache/logs/access_log | grep __s3diag
   function diag(paso) {
     try {
-      fetch(WWWROOT + '/filter/s3video/__s3diag?paso=' + encodeURIComponent(paso))
+      fetch(WWWROOT + '/filter/impronta/__s3diag?paso=' + encodeURIComponent(paso))
         .catch(function() {});
     } catch (e) {}
   }
@@ -56,7 +56,7 @@
     return new Promise(function(resolve, reject) {
       var existing = document.querySelector('script[src="' + src + '"]');
       if (existing) {
-        if (existing.dataset.s3videoLoaded === '1') { resolve(); return; }
+        if (existing.dataset.improntaLoaded === '1') { resolve(); return; }
         existing.addEventListener('load', function() { resolve(); });
         existing.addEventListener('error', function() { reject(new Error('load ' + src)); });
         return;
@@ -65,7 +65,7 @@
       script.src = src;
       script.async = false;
       script.addEventListener('load', function() {
-        script.dataset.s3videoLoaded = '1';
+        script.dataset.improntaLoaded = '1';
         resolve();
       });
       script.addEventListener('error', function() { reject(new Error('load ' + src)); });
@@ -76,9 +76,9 @@
   // El color viaja por dato y se aplica con !important porque el UMD del
   // watermark trae color:#fff en el style inline de cada capa.
   function applyColor(color) {
-    if (!color || document.getElementById('s3video-app-wm-color')) { return; }
+    if (!color || document.getElementById('impronta-app-wm-color')) { return; }
     var style = document.createElement('style');
-    style.id = 's3video-app-wm-color';
+    style.id = 'impronta-app-wm-color';
     style.textContent = '.reelo-watermark { color: ' + color + ' !important; }';
     document.head.appendChild(style);
   }
@@ -88,9 +88,9 @@
   // por las esquinas de la pantalla: play/pause, barra de progreso y botón de
   // pantalla completa no se ven o no se pueden pulsar.
   function injectSafeAreaCSS() {
-    if (document.getElementById('s3video-safe-area')) { return; }
+    if (document.getElementById('impronta-safe-area')) { return; }
     var style = document.createElement('style');
-    style.id = 's3video-safe-area';
+    style.id = 'impronta-safe-area';
     style.textContent = [
       '/* Safe area para esquinas redondeadas / notch */',
       '.video-js .vjs-control-bar {',
@@ -159,12 +159,12 @@
   // enlace al navegador que trae el propio marcador.
   function montar(el) {
     var cfg = {
-      playlist: el.getAttribute('data-s3video-playlist'),
-      events: el.getAttribute('data-s3video-events'),
-      subject: el.getAttribute('data-s3video-subject'),
-      path: el.getAttribute('data-s3video-path'),
-      watermark: el.getAttribute('data-s3video-watermark'),
-      color: el.getAttribute('data-s3video-color')
+      playlist: el.getAttribute('data-impronta-playlist'),
+      events: el.getAttribute('data-impronta-events'),
+      subject: el.getAttribute('data-impronta-subject'),
+      path: el.getAttribute('data-impronta-path'),
+      watermark: el.getAttribute('data-impronta-watermark'),
+      color: el.getAttribute('data-impronta-color')
     };
     if (!cfg.playlist) { diag('montar:sin-datos'); return; }
     diag('montar:marcador');
@@ -250,11 +250,11 @@
       // Solo los que aún no se han montado: el propio reproductor genera
       // muchísimas mutaciones al construirse, y sin este filtro el observador
       // se dispara en bucle sobre un nodo ya resuelto.
-      var nodes = document.querySelectorAll(SELECTOR + ':not([data-s3video-ready])');
+      var nodes = document.querySelectorAll(SELECTOR + ':not([data-impronta-ready])');
       if (!nodes.length) { return; }
       diag('encontrados:' + nodes.length);
       for (var i = 0; i < nodes.length; i++) {
-        nodes[i].setAttribute('data-s3video-ready', '1');
+        nodes[i].setAttribute('data-impronta-ready', '1');
         montar(nodes[i]);
       }
     } catch (e) {
@@ -264,7 +264,7 @@
 
   try {
     // El origen del webview decide qué debe aceptar la lista blanca de CORS
-    // (ver \filter_s3video\request::send_cors_headers). Varía según plataforma
+    // (ver \filter_impronta\request::send_cors_headers). Varía según plataforma
     // y versión de la app, así que se reporta en vez de darlo por supuesto.
     diag('init:origen=' + (typeof location !== 'undefined' ? location.origin : '?'));
     revisar();

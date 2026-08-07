@@ -2,10 +2,10 @@
 /**
  * Token HMAC que comparten embed.php, playlist.php, events.php y cookies.php.
  *
- * @package   filter_s3video
+ * @package   filter_impronta
  */
 
-namespace filter_s3video;
+namespace filter_impronta;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -102,7 +102,7 @@ class token {
             $params['u'] = $userid;
         }
 
-        return $CFG->wwwroot . '/filter/s3video/' . $script . '?'
+        return $CFG->wwwroot . '/filter/impronta/' . $script . '?'
             . http_build_query(array_merge($params, $extra), '', '&', PHP_QUERY_RFC3986);
     }
 
