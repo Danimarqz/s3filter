@@ -1,16 +1,18 @@
 <?php
 // Soporte para la app de Moodle: registra el reproductor in-app.
 //
-// Los handlers de CoreFilterDelegate son un caso especial dentro del API de
-// plugins de la app: NO se pueden declarar de forma declarativa aquí, solo
-// registrarse desde JavaScript. Por eso la única pieza que importa de este
-// fichero es 'init', cuyo JavaScript ejecuta la app nada más recuperar el
-// plugin y es quien llama a CoreFilterDelegate.registerHandler().
+// La única pieza que importa de este fichero es 'init': su JavaScript lo
+// ejecuta la app nada más recuperar el plugin, y es el arranque del
+// reproductor in-app (ver \filter_s3video\output\mobile::mobile_init, que
+// carga js/app-player.js).
 //
-// El filtro PHP sigue corriendo server-side antes de mandar el HTML a la app
-// (ver s3video_player): lo que llega al dispositivo ya es un marcador con la
-// URL de la playlist, el watermark resuelto y el token firmado. El handler
-// solo tiene que montar el reproductor sobre ese marcador.
+// Ese JavaScript NO registra ningún handler de CoreFilterDelegate, a
+// propósito: el motivo está explicado en js/app-player.js y costó un día de
+// app caída en producción. El filtro PHP sigue corriendo server-side antes de
+// mandar el HTML a la app (ver \filter_s3video\player::render), así que lo que
+// llega al dispositivo ya es un marcador con la URL de la playlist, el
+// watermark resuelto y el token firmado. El reproductor solo tiene que
+// montarse encima.
 
 defined('MOODLE_INTERNAL') || die();
 

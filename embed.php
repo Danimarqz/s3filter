@@ -15,7 +15,9 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
-require_once($CFG->dirroot . '/filter/s3video/lib.php');
+
+use filter_s3video\player;
+use filter_s3video\token;
 
 $rawf = optional_param('f', null, PARAM_RAW_TRIMMED);
 $token = optional_param('t', null, PARAM_ALPHANUMEXT);
@@ -23,7 +25,7 @@ $expires = optional_param('e', null, PARAM_INT);
 $courseid = optional_param('c', 0, PARAM_INT);
 $audio = optional_param('a', 0, PARAM_INT);
 // Identidad firmada en el token: permite reproducir sin cookie de sesión, que
-// es el caso del navegador que abre la app de Moodle. Ver s3video_generate_token.
+// es el caso del navegador que abre la app de Moodle. Ver token::generate.
 $userid = optional_param('u', 0, PARAM_INT);
 
 /**
@@ -57,7 +59,7 @@ if (empty($token) || empty($expires)) {
     s3video_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_s3video'))]);
 }
 
-$denied = s3video_authorize_request($filename, $token, (int) $expires, (int) $courseid, (int) $userid);
+$denied = token::authorize($filename, $token, (int) $expires, (int) $courseid, (int) $userid);
 if ($denied !== null) {
     $messages = [s(get_string($denied, 'filter_s3video'))];
 
@@ -97,6 +99,6 @@ $playeroptions = [
   </style>
 </head>
 <body>
-  <?php echo s3video_player($filename, $playeroptions); ?>
+  <?php echo player::render($filename, $playeroptions); ?>
 </body>
 </html>

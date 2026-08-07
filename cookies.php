@@ -16,12 +16,16 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
-require_once($CFG->dirroot . '/filter/s3video/lib.php');
+
+use filter_s3video\cloudfront;
+use filter_s3video\reelo_api;
+use filter_s3video\request;
+use filter_s3video\token;
 
 // El reproductor pide esto con credenciales desde la página del curso, que
 // está en otro subdominio: sin CORS la respuesta se descarta y sin
 // Allow-Credentials el navegador ni siquiera guarda las cookies.
-s3video_send_cors_headers();
+request::send_cors_headers();
 
 $rawf = optional_param('f', null, PARAM_RAW_TRIMMED);
 $token = optional_param('t', null, PARAM_ALPHANUMEXT);
@@ -47,18 +51,18 @@ if ($path === '' || strpos($path, '..') !== false || substr_count($path, '/') !=
     s3video_cookies_fail(400, 'ruta no valida');
 }
 
-$denied = s3video_authorize_request($path, $token, (int) $expires, (int) $courseid, (int) $userid);
+$denied = token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid);
 if ($denied !== null) {
     s3video_cookies_fail(403, get_string($denied, 'filter_s3video'));
 }
 
 $reason = null;
-$signature = s3video_fetch_signature($path, $reason, (int) $userid);
+$signature = reelo_api::signature($path, $reason, (int) $userid);
 if (!$signature) {
     s3video_cookies_fail(502, 'sin firma: ' . ($reason ?: 'desconocido'));
 }
 
-if (!s3video_set_cloudfront_cookies($signature)) {
+if (!cloudfront::set_cookies($signature)) {
     // Este tenant no tiene dominio propio bajo el del Moodle: el modo cookie
     // no es posible y el reproductor debe seguir con URLs firmadas. No es un
     // error, es el otro modo.

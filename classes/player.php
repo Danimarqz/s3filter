@@ -1,0 +1,451 @@
+<?php
+/**
+ * HTML del reproductor.
+ *
+ * Tres salidas distintas según quién pide:
+ *   - navegador: <video> de Video.js + los extras por alumno (player::extras)
+ *   - app de Moodle: un marcador con los datos ya firmados, que monta
+ *     js/app-player.js dentro del webview
+ *   - sin permiso: un aviso en lugar del reproductor
+ *
+ * @package   filter_s3video
+ */
+
+namespace filter_s3video;
+
+defined('MOODLE_INTERNAL') || die();
+
+/**
+ * Construye el reproductor y lo que lo acompaña.
+ */
+class player {
+
+    /** Versión de Video.js que se sirve desde el CDN, en los dos caminos. */
+    const VIDEOJS = '8.16.1';
+
+    /**
+     * URL de un fichero estático del plugin, con la versión como cache-buster.
+     *
+     * Sin el parámetro, el webview de la app se queda con la copia vieja del
+     * JavaScript después de actualizar el plugin y el fallo parece del
+     * servidor.
+     *
+     * @param string $file ruta relativa dentro del plugin
+     * @return string
+     */
+    public static function asset_url(string $file): string {
+        global $CFG;
+        return $CFG->wwwroot . '/filter/s3video/' . $file . '?v=' . (int) config::get('version', 0);
+    }
+
+    /**
+     * Si la petición viene de la app de Moodle.
+     *
+     * @param bool $forceplayer
+     * @return bool
+     */
+    public static function is_mobile_app(bool $forceplayer): bool {
+        if ($forceplayer) {
+            return false;
+        }
+
+        $agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        return stripos($agent, 'MoodleMobile') !== false;
+    }
+
+    /**
+     * Un mensaje corto en lugar del reproductor.
+     *
+     * @param string $identifier identificador de la cadena de idioma
+     * @return string
+     */
+    public static function notice(string $identifier): string {
+        return '<div class="alert alert-warning" role="alert">'
+            . s(get_string($identifier, 'filter_s3video'))
+            . '</div>';
+    }
+
+    /**
+     * HTML del reproductor de un vídeo.
+     *
+     * @param string $filename ruta lógica Materia/Clase
+     * @param array $options
+     *   courseid      int   curso donde se incrusta el vídeo
+     *   audio         bool  solo audio
+     *   subtitles     array códigos de idioma, p. ej. ['es', 'en']
+     *   forceplayer   bool  pintar el reproductor aunque sea la app (embed.php)
+     *   token/expires       reutilizar un token ya validado en vez de emitir uno
+     * @return string
+     * @throws \coding_exception
+     */
+    public static function render(string $filename, array $options = []): string {
+        global $USER;
+
+        $defaults = [
+            'courseid' => 0,
+            'forceplayer' => false,
+            'token' => null,
+            'expires' => null,
+            'userid' => null,
+            'playbackrates' => [0.5, 0.75, 1, 1.25, 1.5, 2],
+            'audio' => false,
+            'subtitles' => [],
+        ];
+        $options = array_merge($defaults, $options);
+        $isaudio = !empty($options['audio']);
+        $courseid = (int) $options['courseid'];
+
+        // Identidad de esta reproducción. Se resuelve antes que nada porque la
+        // comprobación de matrícula depende de ella: cuando el reproductor lo
+        // pinta embed.php abierto desde la app, no hay cookie de sesión y el
+        // único usuario conocido es el que viene firmado en el token.
+        $tokenuserid = (int) ($options['userid'] ?? 0);
+        if ($tokenuserid <= 0) {
+            $tokenuserid = (isloggedin() && !isguestuser()) ? (int) $USER->id : 0;
+        }
+
+        if ($courseid <= 0 && config::require_course()) {
+            return self::notice('nocoursecontext');
+        }
+        if ($courseid > 0 && !access::can_view_course($courseid, $tokenuserid)) {
+            return self::notice('notenrolled');
+        }
+
+        // La caché de render va por vídeo; todo lo que es de cada alumno
+        // (watermark, subject de analítica) se añade después, en self::extras.
+        $cacheable = empty($options['token']) && empty($options['expires'])
+            && empty($options['forceplayer']);
+        static $rendercache = [];
+        static $assetsprinted = false;
+
+        $ismobileapp = self::is_mobile_app($options['forceplayer']);
+        if ($ismobileapp) {
+            $cacheable = false;
+        }
+
+        $cachekey = ($isaudio ? 'a:' : 'v:') . $courseid . ':' . $filename;
+
+        $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
+        $escapedid = 'vjs_' . $escapedid;
+
+        if (!empty($options['token']) && !empty($options['expires'])) {
+            $token = $options['token'];
+            $expires = (int) $options['expires'];
+        } else {
+            $expires = time() + config::token_ttl();
+            $token = token::generate($filename, $expires, $courseid, request::ip(), $tokenuserid);
+        }
+
+        // Modo de autorización del media, decidido una sola vez y aquí arriba
+        // porque lo necesitan tanto la URL de la playlist como la del beacon de
+        // analítica (para poder contar por qué camino se reproduce cada clase).
+        //
+        //   cookies       -> el tenant tiene dominio propio bajo el de este Moodle
+        //   urls firmadas -> cualquier otro caso, y siempre en la app
+        //
+        // Es la diferencia entre que la firma viaje fuera de la playlist (rotable,
+        // TTL corto) o horneada en cada segmento (TTL de horas).
+        //
+        // La app queda FUERA del modo cookie aunque el tenant tenga dominio
+        // propio: su webview está en localhost, que respecto al CDN es cross-site,
+        // así que las cookies no viajarían y todos los segmentos darían 403. Es la
+        // fila "webview" de la tabla de modos: ahí las URLs firmadas no son deuda
+        // técnica, son el único camino que funciona.
+        //
+        // Ojo con la política CORS de CloudFront: si sirve el comodín "*", el
+        // estándar prohíbe usar esa respuesta en peticiones con credenciales, que
+        // es como pide los segmentos el reproductor en este modo. Para que el modo
+        // cookie funcione de verdad hace falta que CloudFront devuelva el origen
+        // exacto y Access-Control-Allow-Credentials.
+        $cookiemode = false;
+        if (!$isaudio && !$ismobileapp) {
+            $razonfirma = null;
+            $firma = reelo_api::signature($filename, $razonfirma, $tokenuserid);
+            $cookiemode = $firma && cloudfront::cookie_domain($firma['baseurl']) !== '';
+        }
+
+        $extraparams = $isaudio ? ['a' => 1] : [];
+        if ($cookiemode) {
+            $extraparams['modo'] = 'cookie';
+        }
+
+        $playlisturl = token::endpoint_url('playlist.php', $filename, $token, $expires, $courseid,
+            $tokenuserid, $extraparams);
+
+        // El beacon de analitica se construye con el mismo token HMAC que la
+        // playlist: el apikey del tenant NUNCA sale del servidor (lo usa solo
+        // events.php, server-side). Ver self::extras(). Se le pasa tambien la URL
+        // de playlist para la recuperacion ante 403 (fase 0.2 del plan de TTL
+        // corto). Los embeds de solo audio no emiten extras (ni watermark, ni
+        // analitica, ni recuperacion): a proposito, es un flujo marginal que no
+        // merece el JS extra.
+        $extrahtml = $isaudio ? '' : self::extras($escapedid, $filename, $token, $expires,
+            $courseid, $playlisturl, $tokenuserid, $cookiemode);
+
+        if ($cacheable && isset($rendercache[$cachekey])) {
+            return $rendercache[$cachekey] . $extrahtml;
+        }
+
+        // El `u` que mete token::endpoint_url es lo que evita el 403 al abrir
+        // este enlace en el navegador del móvil: ahí no hay cookie de sesión de
+        // Moodle (comprobado por ADB, fase 0.4 del plan de TTL corto).
+        $embedurl = token::endpoint_url('embed.php', $filename, $token, $expires, $courseid,
+            $tokenuserid, $isaudio ? ['a' => 1] : []);
+
+        $buttontext = get_string('openvideo', 'filter_s3video');
+
+        if ($ismobileapp) {
+            return self::app_marker($filename, $playlisturl, $embedurl, $token, $expires,
+                $courseid, $tokenuserid, $isaudio, $buttontext);
+        }
+
+        $assets = '';
+        if (!$assetsprinted) {
+            $assetsprinted = true;
+            // El color del watermark se aplica por CSS y no como opción de
+            // ReeloWatermark.attach(): el UMD del paquete trae "color:#fff" en el
+            // style inline de cada capa, y una regla de hoja con !important lo
+            // gana sin tener que recompilar y redistribuir el paquete. El bucle
+            // anti-tampering del UMD reafirma display/visibility/opacity, pero no
+            // toca color, así que no hay pelea entre los dos.
+            $wmcolor = watermark::color();
+            $vjs = self::VIDEOJS;
+            $watermarkjs = self::asset_url('watermark.js');
+            $fitjs = self::asset_url('js/watermark-fit.js');
+            $extrasjs = self::asset_url('js/player-extras.js');
+            $assets = <<<HTML
+<link href="https://vjs.zencdn.net/{$vjs}/video-js.css" rel="stylesheet" />
+<style>.reelo-watermark { color: {$wmcolor} !important; }</style>
+<script src="https://vjs.zencdn.net/{$vjs}/video.min.js"></script>
+<script src="{$watermarkjs}"></script>
+<script src="{$fitjs}"></script>
+<script src="{$extrasjs}"></script>
+HTML;
+        }
+
+        $setupconfig = $isaudio ? ['audioOnlyMode' => true] : ['fluid' => true];
+
+        if ($cookiemode) {
+            // withCredentials es obligatorio: la página está en el subdominio del
+            // Moodle y el media en el del CDN, así que sin él el navegador no
+            // manda las cookies CloudFront-* a las peticiones de los segmentos.
+            $setupconfig['html5'] = ['vhs' => ['withCredentials' => true]];
+        }
+
+        if (!empty($options['playbackrates']) && is_array($options['playbackrates'])) {
+            $normalized = [];
+            foreach ($options['playbackrates'] as $rate) {
+                $rate = (float) $rate;
+                if ($rate > 0) {
+                    $normalized[] = $rate;
+                }
+            }
+            if (!empty($normalized)) {
+                $normalized = array_values(array_unique($normalized));
+                sort($normalized, SORT_NUMERIC);
+                $setupconfig['playbackRates'] = $normalized;
+            }
+        }
+
+        $setupattr = s(json_encode($setupconfig, JSON_UNESCAPED_SLASHES));
+        $playlistsrc = s($playlisturl);
+        $trackshtml = self::tracks_html($filename, $options, $token, $expires, $courseid, $isaudio);
+
+        $assetsmarkup = $assets === '' ? '' : $assets . "\n";
+        $vjsclass = $isaudio ? '' : ' vjs-fluid';
+        $vjsstyle = $isaudio ? ' style="width:100%;height:3em"' : '';
+        $embedhref = s($embedurl);
+
+        $html = <<<HTML
+{$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}
+       controls preload="auto" disablepictureinpicture playsinline data-setup='{$setupattr}'>
+  <source src="{$playlistsrc}" type="application/x-mpegURL">
+{$trackshtml}</video>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof videojs !== 'undefined') {
+    videojs('{$escapedid}').ready(function() { this.playbackRate(1); });
+  }
+});
+</script>
+<div style="text-align:center; padding:1em;">
+  <a href="{$embedhref}" target="_blank"
+     style="display:inline-block; background:#1976d2; color:#fff;
+            padding:0.8em 1.2em; border-radius:6px;
+            font-weight:600; text-decoration:none;">
+    {$buttontext}
+  </a>
+</div>
+HTML;
+
+        if ($cacheable && $assets === '') {
+            $rendercache[$cachekey] = $html;
+        }
+
+        return $html . $extrahtml;
+    }
+
+    /**
+     * Marcador que se manda a la app de Moodle, con todo lo que el reproductor
+     * in-app necesita ya firmado server-side.
+     *
+     * Aquí (petición del web service) el alumno sí está autenticado, mientras
+     * que en el webview no habrá cookie: por eso el token va atado al usuario y
+     * el watermark viaja resuelto, no como plantilla.
+     *
+     * Dentro va el botón de abrir en el navegador como respaldo: si
+     * js/app-player.js no llega a ejecutarse (app antigua, JS bloqueado, fallo
+     * al cargar video.js), el alumno ve exactamente lo que veía antes en vez de
+     * un hueco vacío. El reproductor lo borra al montarse.
+     *
+     * @param string $filename
+     * @param string $playlisturl
+     * @param string $embedurl
+     * @param string $token
+     * @param int $expires
+     * @param int $courseid
+     * @param int $tokenuserid
+     * @param bool $isaudio
+     * @param string $buttontext
+     * @return string
+     */
+    private static function app_marker(string $filename, string $playlisturl, string $embedurl,
+            string $token, int $expires, int $courseid, int $tokenuserid, bool $isaudio,
+            string $buttontext): string {
+        global $USER;
+
+        $infotext = get_string('openvideoinfo', 'filter_s3video');
+        $embedhref = s($embedurl);
+
+        // Esta rama solo corre en la petición del web service de la app
+        // (embed.php pasa forceplayer, que desactiva is_mobile_app), y ahí el
+        // alumno sí está autenticado: $USER es quien verá el vídeo.
+        $data = [
+            'playlist' => $playlisturl,
+            'events' => $isaudio ? '' : token::endpoint_url('events.php', $filename, $token,
+                $expires, $courseid, $tokenuserid),
+            'subject' => reelo_api::subject($tokenuserid),
+            'path' => $filename,
+            'watermark' => $tokenuserid > 0 ? watermark::label($USER) : '',
+            'color' => watermark::color(),
+            'embed' => $embedurl,
+        ];
+        $attrs = '';
+        foreach ($data as $key => $value) {
+            $attrs .= ' data-s3video-' . $key . '="' . s((string) $value) . '"';
+        }
+
+        return <<<HTML
+<div class="filter_s3video-app-player"{$attrs} style="text-align:center; padding:1em;">
+  <a href="{$embedhref}" target="_blank"
+     style="display:inline-block; background:#1976d2; color:#fff;
+            padding:0.8em 1.2em; border-radius:6px;
+            font-weight:600; text-decoration:none;">
+    {$buttontext}
+  </a>
+  <p style="font-size:0.9em;color:#666;margin-top:0.5em;">{$infotext}</p>
+</div>
+HTML;
+    }
+
+    /**
+     * Etiquetas <track> de subtítulos, servidas por playlist.php.
+     *
+     * @param string $filename
+     * @param array $options
+     * @param string $token
+     * @param int $expires
+     * @param int $courseid
+     * @param bool $isaudio
+     * @return string
+     */
+    private static function tracks_html(string $filename, array $options, string $token, int $expires,
+            int $courseid, bool $isaudio): string {
+        global $CFG;
+
+        if ($isaudio || empty($options['subtitles']) || !is_array($options['subtitles'])) {
+            return '';
+        }
+
+        $langnames = ['es' => 'Español', 'en' => 'English', 'pt' => 'Português', 'fr' => 'Français'];
+        $trackshtml = '';
+
+        foreach ($options['subtitles'] as $lang) {
+            $lang = strtolower(trim((string) $lang));
+            if (!preg_match('/^[a-z0-9\-]{2,5}$/', $lang)) {
+                continue;
+            }
+            $trackparams = [
+                'f' => $filename,
+                'vtt' => $lang,
+                't' => $token,
+                'e' => $expires,
+                'c' => $courseid,
+            ];
+            $trackquery = http_build_query($trackparams, '', '&', PHP_QUERY_RFC3986);
+            $trackurl = $CFG->wwwroot . '/filter/s3video/playlist.php?' . $trackquery;
+            $label = $langnames[$lang] ?? strtoupper($lang);
+            $trackshtml .= '  <track kind="subtitles" srclang="' . s($lang) . '" label="' . s($label)
+                . '" src="' . s($trackurl) . "\">\n";
+        }
+
+        return $trackshtml;
+    }
+
+    /**
+     * Lo que se añade después del reproductor y depende del alumno: watermark,
+     * analítica y recuperación ante 403. Nunca se cachea.
+     *
+     * El código vive en js/player-extras.js; aquí solo se emite la llamada con
+     * los datos resueltos.
+     *
+     * @param string $escapedid id DOM del elemento <video>
+     * @param string $filename ruta lógica del vídeo
+     * @param string $token token HMAC emitido para este render
+     * @param int $expires caducidad del token
+     * @param int $courseid curso donde se incrustó (0 = ninguno)
+     * @param string $playlisturl URL de playlist.php, para la recuperación ante 403
+     * @param int $userid usuario firmado en el token (0 = usar el de la sesión)
+     * @param bool $cookiemode si el media se autoriza por cookies en vez de por
+     *     firma en la URL; viaja hasta la analítica para poder contar por qué
+     *     camino se reproduce cada clase
+     * @return string
+     */
+    private static function extras(string $escapedid, string $filename, string $token, int $expires,
+            int $courseid, string $playlisturl, int $userid = 0, bool $cookiemode = false): string {
+        global $USER;
+
+        // El usuario del watermark sale del token cuando no hay sesión (la app
+        // abre el reproductor sin cookie); si no, del usuario de la sesión. Sin
+        // esto el watermark quedaría vacío justo en el camino móvil, que es donde
+        // más falta hace.
+        $watermarkuser = null;
+        if ($userid > 0) {
+            $watermarkuser = \core_user::get_user($userid);
+        } else if (isloggedin() && !isguestuser()) {
+            $watermarkuser = $USER;
+        }
+
+        $cfg = [
+            'targetId' => $escapedid,
+            'watermarkLabel' => $watermarkuser ? watermark::label($watermarkuser) : '',
+            'eventsUrl' => token::endpoint_url('events.php', $filename, $token, $expires, $courseid,
+                $userid, $cookiemode ? ['modo' => 'cookie'] : []),
+            'subject' => reelo_api::subject($userid),
+            'videoPath' => $filename,
+            'playlistUrl' => $playlisturl,
+            'expiredText' => s(get_string('sessionexpired', 'filter_s3video')),
+            'heartbeatSeconds' => 15,
+        ];
+
+        // JSON_HEX_TAG no es opcional: la etiqueta del watermark sale de campos
+        // que edita el propio usuario (nombre, campos de perfil) y esto se
+        // inyecta dentro de un <script>. Sin escapar "<" y ">", un perfil con
+        // "</script>" cerraría el bloque e inyectaría HTML en la página. Lo que
+        // se escapa son escapes de cadena JS: el watermark muestra el texto tal
+        // cual.
+        $cfgjson = json_encode($cfg, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+
+        return "\n<script>ReeloPlayerExtras({$cfgjson});</script>\n";
+    }
+}

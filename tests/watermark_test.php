@@ -9,13 +9,9 @@ namespace filter_s3video;
 
 defined('MOODLE_INTERNAL') || die();
 
-global $CFG;
-require_once($CFG->dirroot . '/filter/s3video/lib.php');
-
 /**
- * @covers ::s3video_build_watermark_label
- * @covers ::s3video_watermark_field
- * @covers ::s3video_watermark_color
+ * @covers \filter_s3video\watermark
+ * @covers \filter_s3video\token
  */
 class watermark_test extends \advanced_testcase {
 
@@ -30,7 +26,7 @@ class watermark_test extends \advanced_testcase {
             'idnumber' => '12345678A',
         ]);
 
-        $this->assertSame('Juan - 12345678A', s3video_build_watermark_label($user));
+        $this->assertSame('Juan - 12345678A', watermark::label($user));
     }
 
     /**
@@ -48,7 +44,7 @@ class watermark_test extends \advanced_testcase {
             'idnumber' => 'X1234567L',
         ]);
 
-        $this->assertSame(fullname($user) . ' - X1234567L', s3video_build_watermark_label($user));
+        $this->assertSame(fullname($user) . ' - X1234567L', watermark::label($user));
     }
 
     /** Un campo permitido pero vacío se sustituye por nada, no se deja literal. */
@@ -58,7 +54,7 @@ class watermark_test extends \advanced_testcase {
 
         $user = $this->getDataGenerator()->create_user(['firstname' => 'Lucía', 'idnumber' => '']);
 
-        $this->assertSame('Lucía', s3video_build_watermark_label($user));
+        $this->assertSame('Lucía', watermark::label($user));
     }
 
     /** Un token que no existe se deja literal, para que se vea la errata. */
@@ -68,7 +64,7 @@ class watermark_test extends \advanced_testcase {
 
         $user = $this->getDataGenerator()->create_user(['firstname' => 'Marta']);
 
-        $this->assertSame('Marta {noexiste}', s3video_build_watermark_label($user));
+        $this->assertSame('Marta {noexiste}', watermark::label($user));
     }
 
     /**
@@ -85,7 +81,7 @@ class watermark_test extends \advanced_testcase {
 
         foreach (['password', 'sesskey', 'secret', 'id'] as $token) {
             $this->assertNull(
-                s3video_watermark_field($user, $token),
+                watermark::field($user, $token),
                 "El token '$token' no debería resolverse"
             );
         }
@@ -96,11 +92,11 @@ class watermark_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user(['firstname' => 'Eva', 'city' => 'Bilbao']);
         $user->profile_field_dni = 'B98765432';
 
-        $this->assertSame('Eva', s3video_watermark_field($user, 'firstname'));
-        $this->assertSame('Bilbao', s3video_watermark_field($user, 'city'));
-        $this->assertSame('B98765432', s3video_watermark_field($user, 'profile_field_dni'));
+        $this->assertSame('Eva', watermark::field($user, 'firstname'));
+        $this->assertSame('Bilbao', watermark::field($user, 'city'));
+        $this->assertSame('B98765432', watermark::field($user, 'profile_field_dni'));
         // Alias heredados.
-        $this->assertSame(fullname($user), s3video_watermark_field($user, 'name'));
+        $this->assertSame(fullname($user), watermark::field($user, 'name'));
     }
 
     /**
@@ -117,19 +113,19 @@ class watermark_test extends \advanced_testcase {
         $expires = time() + 3600;
         $ip = '203.0.113.7';
 
-        $token = s3video_generate_token($path, $expires, 5, $ip, 42);
+        $token = token::generate($path, $expires, 5, $ip, 42);
 
         // Sirve para el usuario que se firmó...
-        $this->assertTrue(s3video_validate_token($path, $token, $expires, 5, $ip, 42));
+        $this->assertTrue(token::validate($path, $token, $expires, 5, $ip, 42));
         // ...y para nadie más: cambiar la u de la URL invalida el HMAC.
-        $this->assertFalse(s3video_validate_token($path, $token, $expires, 5, $ip, 43));
+        $this->assertFalse(token::validate($path, $token, $expires, 5, $ip, 43));
         // Ni permite quitar la atadura para colarse como anónimo.
-        $this->assertFalse(s3video_validate_token($path, $token, $expires, 5, $ip, 0));
+        $this->assertFalse(token::validate($path, $token, $expires, 5, $ip, 0));
         // Ni reutilizarlo en otra clase o en otro curso.
-        $this->assertFalse(s3video_validate_token('Materia/Otra', $token, $expires, 5, $ip, 42));
-        $this->assertFalse(s3video_validate_token($path, $token, $expires, 6, $ip, 42));
+        $this->assertFalse(token::validate('Materia/Otra', $token, $expires, 5, $ip, 42));
+        $this->assertFalse(token::validate($path, $token, $expires, 6, $ip, 42));
         // Caducado, no.
-        $this->assertFalse(s3video_validate_token($path, $token, time() - 1, 5, $ip, 42));
+        $this->assertFalse(token::validate($path, $token, time() - 1, 5, $ip, 42));
     }
 
     /**
@@ -142,9 +138,9 @@ class watermark_test extends \advanced_testcase {
         set_config('bindip', 0, 'filter_s3video');
 
         $expires = time() + 3600;
-        $viejo = s3video_generate_token('Materia/Clase', $expires, 5, '203.0.113.7');
+        $viejo = token::generate('Materia/Clase', $expires, 5, '203.0.113.7');
 
-        $this->assertTrue(s3video_validate_token('Materia/Clase', $viejo, $expires, 5, '203.0.113.7'));
+        $this->assertTrue(token::validate('Materia/Clase', $viejo, $expires, 5, '203.0.113.7'));
     }
 
     /**
@@ -157,7 +153,7 @@ class watermark_test extends \advanced_testcase {
         $validos = ['#fff', '#ffffff', '#FF0000', '#12345678'];
         foreach ($validos as $color) {
             set_config('watermarkcolor', $color, 'filter_s3video');
-            $this->assertSame($color, s3video_watermark_color());
+            $this->assertSame($color, watermark::color());
         }
 
         $invalidos = [
@@ -169,7 +165,7 @@ class watermark_test extends \advanced_testcase {
         ];
         foreach ($invalidos as $color) {
             set_config('watermarkcolor', $color, 'filter_s3video');
-            $this->assertSame('#ffffff', s3video_watermark_color());
+            $this->assertSame('#ffffff', watermark::color());
         }
     }
 }

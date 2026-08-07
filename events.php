@@ -17,11 +17,14 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
-require_once($CFG->dirroot . '/filter/s3video/lib.php');
+
+use filter_s3video\reelo_api;
+use filter_s3video\request;
+use filter_s3video\token;
 
 // Igual que playlist.php, y además contestando al OPTIONS: el beacon de la app
 // es un POST con Content-Type JSON, que dispara comprobación previa.
-s3video_send_cors_headers(true);
+request::send_cors_headers(true);
 
 $rawf = optional_param('f', null, PARAM_RAW_TRIMMED);
 $token = optional_param('t', null, PARAM_ALPHANUMEXT);
@@ -48,7 +51,7 @@ if (empty($token) || empty($expires)) {
     s3video_events_fail(403);
 }
 
-if (s3video_authorize_request($path, $token, (int) $expires, (int) $courseid, (int) $userid) !== null) {
+if (token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid) !== null) {
     s3video_events_fail(403);
 }
 
@@ -58,12 +61,12 @@ if (!is_array($payload)) {
 }
 
 // El subject es determinista desde el id de usuario y el secret del plugin
-// (s3video_analytics_subject): recalcularlo aqui e ignorar el del payload,
+// (reelo_api::subject): recalcularlo aqui e ignorar el del payload,
 // para que el cliente no pueda reportar analitica bajo un identificador
 // ajeno. La identidad sale del token firmado cuando viene (camino de la app,
-// sin cookie) y de la sesion en caso contrario; s3video_authorize_request ya
+// sin cookie) y de la sesion en caso contrario; token::authorize ya
 // ha exigido una de las dos, asi que el subject nunca es vacio aqui.
-$subject = s3video_analytics_subject((int) $userid);
+$subject = reelo_api::subject((int) $userid);
 $events = isset($payload['events']) && is_array($payload['events']) ? $payload['events'] : [];
 if (empty($events)) {
     s3video_events_fail(400);
@@ -119,7 +122,7 @@ if (empty($clean)) {
     s3video_events_fail(400);
 }
 
-if (!s3video_post_events(['subject' => $subject, 'events' => $clean])) {
+if (!reelo_api::post_events(['subject' => $subject, 'events' => $clean])) {
     s3video_events_fail(502);
 }
 

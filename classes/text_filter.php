@@ -20,8 +20,6 @@ namespace filter_s3video;
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once(__DIR__ . '/../lib.php');
-
 class text_filter extends \moodle_text_filter {
     public function filter($text, array $options = array()) {
         if (strpos($text, '[s3') === false && strpos($text, '[reelo') === false) {
@@ -30,7 +28,7 @@ class text_filter extends \moodle_text_filter {
 
         static $pattern = '/\[(?:reelo|s3)(audio)?:([^\]]+)\]/';
 
-        $courseid = \s3video_courseid_from_context($this->context);
+        $courseid = \access::courseid_from_context($this->context);
 
         return preg_replace_callback($pattern, function ($matches) use ($courseid) {
             $isaudio = $matches[1] === 'audio';
@@ -63,7 +61,7 @@ class text_filter extends \moodle_text_filter {
                 }
             }
 
-            return \s3video_player($filename, [
+            return \player::render($filename, [
                 'audio' => $isaudio,
                 'subtitles' => $subtitles,
                 'courseid' => $courseid,

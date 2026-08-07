@@ -2,7 +2,7 @@
 /**
  * Settings for the S3 Video filter.
  *
- * The Reelo backend URL is a constant in lib.php (S3VIDEO_API_URL),
+ * The Reelo backend URL is a class constant (\filter_s3video\reelo_api::URL),
  * deliberately NOT editable here. Only the tenant credential, the local
  * signing secret, and the watermark template are configured from Moodle.
  *
@@ -11,12 +11,15 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+use filter_s3video\reelo_api;
+
 // Moodle incluye este fichero al construir el árbol de administración, y lo
-// hace SIN cargar el lib.php del plugin. Sin este require, la constante
-// S3VIDEO_API_URL de más abajo no existe y la excepción no se queda en la
-// página de ajustes: revienta cualquier página que construya ese árbol, o
-// sea, el sitio entero. Comprobado en producción de la peor manera posible.
-require_once(__DIR__ . '/lib.php');
+// hace SIN cargar ningún lib.php del plugin. De ahí que todo lo que use este
+// fichero tenga que ser una clase de classes/, que sí se autocarga: cuando
+// esto dependía de una constante de lib.php, la excepción no se quedaba en la
+// página de ajustes, reventaba cualquier página que construyera ese árbol —o
+// sea, el sitio entero. Comprobado en producción de la peor manera posible el
+// 2026-08-06.
 
 if ($hassiteconfig) {
     $settings = new admin_settingpage('filter_s3video_settings', get_string('settings', 'filter_s3video'));
@@ -24,7 +27,7 @@ if ($hassiteconfig) {
     $settings->add(new admin_setting_heading(
         'filter_s3video/backend',
         get_string('backendheading', 'filter_s3video'),
-        get_string('backenddesc', 'filter_s3video', S3VIDEO_API_URL)
+        get_string('backenddesc', 'filter_s3video', reelo_api::URL)
     ));
 
     $settings->add(new admin_setting_configpasswordunmask(
