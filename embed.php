@@ -22,6 +22,9 @@ $token = optional_param('t', null, PARAM_ALPHANUMEXT);
 $expires = optional_param('e', null, PARAM_INT);
 $courseid = optional_param('c', 0, PARAM_INT);
 $audio = optional_param('a', 0, PARAM_INT);
+// Identidad firmada en el token: permite reproducir sin cookie de sesión, que
+// es el caso del navegador que abre la app de Moodle. Ver s3video_generate_token.
+$userid = optional_param('u', 0, PARAM_INT);
 
 /**
  * Renders a standalone dark page with one or more messages and stops.
@@ -54,29 +57,21 @@ if (empty($token) || empty($expires)) {
     s3video_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_s3video'))]);
 }
 
-$ip = s3video_get_request_ip();
-if (!s3video_validate_token($filename, $token, (int) $expires, (int) $courseid, $ip)) {
-    s3video_embed_fail(403, [s(get_string('tokeninvalid', 'filter_s3video'))]);
-}
+$denied = s3video_authorize_request($filename, $token, (int) $expires, (int) $courseid, (int) $userid);
+if ($denied !== null) {
+    $messages = [s(get_string($denied, 'filter_s3video'))];
 
-if ($courseid > 0) {
-    if (!s3video_user_can_access_course((int) $courseid)) {
-        $messages = [s(get_string('notenrolled', 'filter_s3video'))];
-        if (isloggedin() && !isguestuser()) {
-            $messages[] = s(get_string('sessionconflict', 'filter_s3video', format_string(fullname($USER, true))));
-            $logouturl = new moodle_url('/login/logout.php', ['sesskey' => sesskey()]);
-            $messages[] = '<a href="' . s($logouturl->out(false)) . '">'
-                . s(get_string('logoutandretry', 'filter_s3video')) . '</a>';
-        }
-        s3video_embed_fail(403, $messages);
+    // Caso típico desde el móvil: el enlace se abrió en un navegador donde hay
+    // otra sesión de Moodle distinta a la del alumno que lo generó. Decirlo y
+    // ofrecer cerrar sesión ahorra el "no funciona" sin más.
+    if ($denied === 'notenrolled' && isloggedin() && !isguestuser()) {
+        $messages[] = s(get_string('sessionconflict', 'filter_s3video', format_string(fullname($USER, true))));
+        $logouturl = new moodle_url('/login/logout.php', ['sesskey' => sesskey()]);
+        $messages[] = '<a href="' . s($logouturl->out(false)) . '">'
+            . s(get_string('logoutandretry', 'filter_s3video')) . '</a>';
     }
-} else {
-    if (s3video_require_course()) {
-        s3video_embed_fail(403, [s(get_string('nocoursecontext', 'filter_s3video'))]);
-    }
-    if (!isloggedin() || isguestuser()) {
-        s3video_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_s3video'))]);
-    }
+
+    s3video_embed_fail(403, $messages);
 }
 
 $playeroptions = [
@@ -85,6 +80,7 @@ $playeroptions = [
     'courseid' => (int) $courseid,
     'token' => $token,
     'expires' => (int) $expires,
+    'userid' => (int) $userid,
 ];
 ?>
 <!DOCTYPE html>
