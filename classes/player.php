@@ -299,7 +299,7 @@ HTML;
             'playlist' => $playlisturl,
             'events' => $isaudio ? '' : token::endpoint_url('events.php', $filename, $token,
                 $expires, $courseid, $tokenuserid),
-            'subject' => reelo_api::subject($tokenuserid),
+            'subject' => impronta_api::subject($tokenuserid),
             'path' => $filename,
             'watermark' => $tokenuserid > 0 ? watermark::label($USER) : '',
             'color' => watermark::color(),
@@ -408,7 +408,7 @@ HTML;
             'watermarkLabel' => $watermarkuser ? watermark::label($watermarkuser) : '',
             'eventsUrl' => token::endpoint_url('events.php', $filename, $token, $expires, $courseid,
                 $userid),
-            'subject' => reelo_api::subject($userid),
+            'subject' => impronta_api::subject($userid),
             'videoPath' => $filename,
             'playlistUrl' => $playlisturl,
             'expiredText' => s(get_string('sessionexpired', 'filter_impronta')),
@@ -417,7 +417,7 @@ HTML;
             // Aquel manda eventos de visionado cada 15 s; este mantiene viva la
             // sesión de reproducción, reporta cuánto vídeo se ha visto -el
             // denominador de la detección- y trae de vuelta si hay que parar.
-            // El intervalo real lo dice Reelo en su respuesta.
+            // El intervalo real lo dice Impronta en su respuesta.
             'sessionUrl' => token::endpoint_url('heartbeat.php', $filename, $token, $expires, $courseid,
                 $userid),
             'revokedText' => s(get_string('accessrevoked', 'filter_impronta')),
@@ -432,6 +432,6 @@ HTML;
         // cual.
         $cfgjson = json_encode($cfg, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
-        return "\n<script>ReeloPlayerExtras({$cfgjson});</script>\n";
+        return "\n<script>ImprontaPlayerExtras({$cfgjson});</script>\n";
     }
 }

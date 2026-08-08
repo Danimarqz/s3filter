@@ -2,7 +2,7 @@
 /**
  * Server-side relay for player analytics events.
  *
- * The player beacon posts here instead of calling Reelo directly so the
+ * The player beacon posts here instead of calling Impronta directly so the
  * tenant's API key never leaves the Moodle server. Previously the key was
  * inlined in a <script> every learner could read, which defeated the whole
  * access model: that same key mints CloudFront signatures for the entire
@@ -18,7 +18,7 @@
 
 require_once(__DIR__ . '/../../config.php');
 
-use filter_impronta\reelo_api;
+use filter_impronta\impronta_api;
 use filter_impronta\request;
 use filter_impronta\token;
 
@@ -61,12 +61,12 @@ if (!is_array($payload)) {
 }
 
 // El subject es determinista desde el id de usuario y el secret del plugin
-// (reelo_api::subject): recalcularlo aqui e ignorar el del payload,
+// (impronta_api::subject): recalcularlo aqui e ignorar el del payload,
 // para que el cliente no pueda reportar analitica bajo un identificador
 // ajeno. La identidad sale del token firmado cuando viene (camino de la app,
 // sin cookie) y de la sesion en caso contrario; token::authorize ya
 // ha exigido una de las dos, asi que el subject nunca es vacio aqui.
-$subject = reelo_api::subject((int) $userid);
+$subject = impronta_api::subject((int) $userid);
 $events = isset($payload['events']) && is_array($payload['events']) ? $payload['events'] : [];
 if (empty($events)) {
     impronta_events_fail(400);
@@ -122,7 +122,7 @@ if (empty($clean)) {
     impronta_events_fail(400);
 }
 
-if (!reelo_api::post_events(['subject' => $subject, 'events' => $clean])) {
+if (!impronta_api::post_events(['subject' => $subject, 'events' => $clean])) {
     impronta_events_fail(502);
 }
 

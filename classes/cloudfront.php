@@ -2,7 +2,7 @@
 /**
  * Empaquetado de la firma de CloudFront: URL firmada y descarga server-side.
  *
- * La firma la emite Reelo (ver reelo_api::signature) y ya solo la usan los
+ * La firma la emite Impronta (ver impronta_api::signature) y ya solo la usan los
  * subtítulos, que este plugin descarga y sirve él.
  *
  * Aquí hubo también un modo cookie, que ponía la firma en el navegador del
@@ -33,7 +33,7 @@ class cloudfront {
      * después de comprobar que el alumno sigue teniendo acceso.
      *
      * @param string $url
-     * @param array $signature como la devuelve reelo_api::signature()
+     * @param array $signature como la devuelve impronta_api::signature()
      * @return string
      */
     public static function sign_url(string $url, array $signature): string {
@@ -75,7 +75,7 @@ class cloudfront {
                 CURLOPT_SSL_VERIFYPEER => true,
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_CONNECTTIMEOUT => 5,
-                CURLOPT_USERAGENT => 'Reelo-Moodle-HLS-Proxy',
+                CURLOPT_USERAGENT => 'Impronta-Moodle-HLS-Proxy',
                 CURLOPT_FAILONERROR => true,
             ]);
 

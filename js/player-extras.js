@@ -4,10 +4,10 @@
 // Va aparte del HTML del reproductor porque ese HTML se cachea por vídeo y
 // esto NO se puede cachear: la etiqueta del watermark y el subject de la
 // analítica son de cada alumno. \filter_impronta\player::extras imprime una
-// llamada a ReeloPlayerExtras() por vídeo con esos datos ya resueltos.
+// llamada a ImprontaPlayerExtras() por vídeo con esos datos ya resueltos.
 //
 // El beacon apunta a events.php de este mismo plugin, que valida el mismo
-// token HMAC que protege la playlist y reenvía a Reelo server-side con el
+// token HMAC que protege la playlist y reenvía a Impronta server-side con el
 // apikey del tenant. El apikey nunca llega al navegador: filtrarlo dejaría a
 // cualquier alumno firmar CloudFront para el catálogo entero (POST
 // /moodle/authorize confía en esa misma clave).
@@ -16,7 +16,7 @@
 //   targetId, watermarkLabel, eventsUrl, subject, videoPath, playlistUrl,
 //   expiredText, heartbeatSeconds, sessionUrl, revokedText, evictedText
 // }
-window.ReeloPlayerExtras = function(cfg) {
+window.ImprontaPlayerExtras = function(cfg) {
   'use strict';
 
   var targetId = cfg.targetId;
@@ -79,7 +79,7 @@ window.ReeloPlayerExtras = function(cfg) {
 
     // Los segundos se acumulan de los avances pequeños de currentTime y no del
     // reloj: así una pausa no cuenta, un rebobinado no resta, y ver a 2x cuenta
-    // el doble, que es lo que Reelo compara contra los segmentos servidos.
+    // el doble, que es lo que Impronta compara contra los segmentos servidos.
     player.on('timeupdate', function() {
       var t = player.currentTime() || 0;
       var delta = t - ultimoTiempo;
@@ -138,7 +138,7 @@ window.ReeloPlayerExtras = function(cfg) {
     //
     // Un solo reintento por caducidad: tras cada error, guardar la posicion,
     // recargar la playlist con cache-buster (playlist.php pide una playlist
-    // nueva a Reelo), restaurar la posicion y reanudar. recovered se resetea
+    // nueva a Impronta), restaurar la posicion y reanudar. recovered se resetea
     // en el primer 'playing' posterior. Si la recarga no llega a reproducir,
     // recovered sigue true y el siguiente error muestra el mensaje explicito.
     var recovered = false;
@@ -193,7 +193,7 @@ window.ReeloPlayerExtras = function(cfg) {
       }
     });
 
-    window.ReeloWatermarkFit.attach(player, wm);
+    window.ImprontaWatermarkFit.attach(player, wm);
   }
 
   if (document.readyState === 'loading') {

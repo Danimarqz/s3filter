@@ -36,7 +36,7 @@ class config {
     public static function required(string $name): string {
         $value = self::get($name);
         if ($value === null || $value === '') {
-            throw new \coding_exception('Missing required Reelo configuration: filter_impronta/' . $name);
+            throw new \coding_exception('Missing required Impronta configuration: filter_impronta/' . $name);
         }
         return (string) $value;
     }
@@ -64,7 +64,7 @@ class config {
     /**
      * Duración de los tokens del plugin, en segundos.
      *
-     * Default de 7 h (25200 s): debe sobrevivir a la firma de Reelo (TTL =
+     * Default de 7 h (25200 s): debe sobrevivir a la firma de Impronta (TTL =
      * duración de la clase + 30 min, techo de 6 h), porque la recuperación
      * ante 403 recarga playlist.php con el token ORIGINAL del render. Un
      * único sitio con este cálculo: si el player y las renditions del master

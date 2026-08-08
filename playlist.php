@@ -7,7 +7,7 @@
  *   1. El parámetro `c` (curso) firmado tiene que sobrevivir a la validación
  *      HMAC, y el espectador tiene que estar matriculado AHORA en ese curso.
  *      Esto lo comprueba este sitio, que es el único que lo sabe.
- *   2. Reelo comprueba lo suyo con el apikey de este sitio.
+ *   2. Impronta comprueba lo suyo con el apikey de este sitio.
  *
  * LA PLAYLIST YA NO LLEVA FIRMAS DENTRO, y ese es el cambio de fondo.
  *
@@ -32,7 +32,7 @@
 require_once(__DIR__ . '/../../config.php');
 
 use filter_impronta\cloudfront;
-use filter_impronta\reelo_api;
+use filter_impronta\impronta_api;
 use filter_impronta\request;
 use filter_impronta\token;
 
@@ -104,7 +104,7 @@ if ($denied !== null) {
 
 if ($vttlang !== null) {
     $reason = null;
-    $signature = reelo_api::signature($path, $reason, (int) $userid);
+    $signature = impronta_api::signature($path, $reason, (int) $userid);
     if ($signature === null) {
         $message = $reason === 'denied'
             ? get_string('servicedenied', 'filter_impronta')
@@ -138,7 +138,7 @@ if ($vttlang !== null) {
 /* --------------------------------------------------------------------- */
 
 $reason = null;
-$sesion = reelo_api::playlist($path, $reason, (int) $userid);
+$sesion = impronta_api::playlist($path, $reason, (int) $userid);
 if ($sesion === null) {
     $message = $reason === 'denied'
         ? get_string('servicedenied', 'filter_impronta')
@@ -159,6 +159,6 @@ header('Cache-Control: no-store');
 // conocerlo — que además es lo correcto: así no puede latir por una sesión
 // ajena.
 if (!empty($sesion['sessionId'])) {
-    reelo_api::remember_session($path, (int) $userid, (string) $sesion['sessionId']);
+    impronta_api::remember_session($path, (int) $userid, (string) $sesion['sessionId']);
 }
 echo $sesion['playlist'];

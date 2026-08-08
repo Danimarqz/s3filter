@@ -128,7 +128,7 @@
       if (!queue.length) { return; }
       var batch = queue;
       queue = [];
-      // events.php reenvía a Reelo server-side con el apikey del tenant: la
+      // events.php reenvía a Impronta server-side con el apikey del tenant: la
       // clave no baja nunca al dispositivo.
       fetch(cfg.events, {
         method: 'POST',
@@ -295,7 +295,7 @@
           tamperLimit: 3,
           onTamper: function() {}
         });
-        window.ReeloWatermarkFit.attach(player, wm, diag);
+        window.ImprontaWatermarkFit.attach(player, wm, diag);
       }).catch(function() {
         // Sin watermark no se reproduce: identificar al alumno es el motivo
         // de que exista este reproductor.

@@ -1,8 +1,8 @@
 <?php
 /**
- * Latido de una sesión de reproducción, reenviado a Reelo server-side.
+ * Latido de una sesión de reproducción, reenviado a Impronta server-side.
  *
- * El reproductor late aquí en vez de llamar a Reelo directamente por el mismo
+ * El reproductor late aquí en vez de llamar a Impronta directamente por el mismo
  * motivo que events.php: el apikey del tenant no puede bajar al navegador.
  * Filtrarlo dejaría a cualquier alumno pedir la playlist de cualquier clase del
  * catálogo, que es lo que ese apikey autoriza.
@@ -31,7 +31,7 @@
 
 require_once(__DIR__ . '/../../config.php');
 
-use filter_impronta\reelo_api;
+use filter_impronta\impronta_api;
 use filter_impronta\request;
 use filter_impronta\token;
 
@@ -70,7 +70,7 @@ if (token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $user
     impronta_heartbeat_fail(403);
 }
 
-$sessionid = reelo_api::recall_session($path, (int) $userid);
+$sessionid = impronta_api::recall_session($path, (int) $userid);
 if ($sessionid === '') {
     // No hay sesión que renovar: o la playlist se pidió hace demasiado, o esta
     // instalación no tiene caché compartida entre peticiones. 409 y no error:
@@ -84,7 +84,7 @@ if (is_array($payload) && isset($payload['watchedSeconds']) && is_numeric($paylo
     $watched = max(0, (int) $payload['watchedSeconds']);
 }
 
-$respuesta = reelo_api::heartbeat($path, (int) $userid, $sessionid, $watched);
+$respuesta = impronta_api::heartbeat($path, (int) $userid, $sessionid, $watched);
 if ($respuesta === null) {
     // Perder un latido no puede parar la reproducción: el siguiente lo arregla,
     // y si de verdad hay un bloqueo lo corta el propio segmento con un 403.

@@ -2,7 +2,7 @@
 /**
  * Settings for the Impronta filter.
  *
- * The Reelo backend URL is a class constant (\filter_impronta\reelo_api::URL),
+ * The Impronta backend URL is a class constant (\filter_impronta\impronta_api::URL),
  * deliberately NOT editable here. Only the tenant credential, the local
  * signing secret, and the watermark template are configured from Moodle.
  *
@@ -11,7 +11,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-use filter_impronta\reelo_api;
+use filter_impronta\impronta_api;
 
 // Moodle incluye este fichero al construir el árbol de administración, y lo
 // hace SIN cargar ningún lib.php del plugin. De ahí que todo lo que use este
@@ -27,7 +27,7 @@ if ($hassiteconfig) {
     $settings->add(new admin_setting_heading(
         'filter_impronta/backend',
         get_string('backendheading', 'filter_impronta'),
-        get_string('backenddesc', 'filter_impronta', reelo_api::URL)
+        get_string('backenddesc', 'filter_impronta', impronta_api::URL)
     ));
 
     $settings->add(new admin_setting_configpasswordunmask(

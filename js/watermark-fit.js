@@ -116,5 +116,5 @@
     return {destroy: destroy};
   }
 
-  global.ReeloWatermarkFit = {attach: encajar};
+  global.ImprontaWatermarkFit = {attach: encajar};
 })(window);

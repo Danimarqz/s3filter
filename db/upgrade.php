@@ -19,7 +19,7 @@ function xmldb_filter_impronta_upgrade($oldversion) {
         //
         // La recuperación ante 403 recarga playlist.php con el token
         // ORIGINAL del render: para que se complete, el token debe sobrevivir
-        // a la firma de CloudFront de Reelo (TTL = duración de la clase + 30
+        // a la firma de CloudFront de Impronta (TTL = duración de la clase + 30
         // min, techo de 6 h = 21600 s). El default del ajuste subió de 1800 a
         // 25200 (7 h) en settings.php, pero cambiar el default no toca el
         // valor ya guardado en la tabla config: aquí se sube en los sitios

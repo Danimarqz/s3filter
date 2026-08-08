@@ -2,7 +2,7 @@
 /**
  * Capa 2 del control de acceso: el curso donde se incrustó el vídeo.
  *
- * Reelo no puede hacer esta comprobación —las matrículas son de Moodle— y la
+ * Impronta no puede hacer esta comprobación —las matrículas son de Moodle— y la
  * identidad del curso sale del contexto de render del filtro, así que no es
  * algo que el navegador pueda cambiar.
  *
