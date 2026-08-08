@@ -303,6 +303,12 @@ HTML;
             'path' => $filename,
             'watermark' => $tokenuserid > 0 ? watermark::label($USER) : '',
             'color' => watermark::color(),
+            // El latido de la sesión. Los embeds de solo audio quedan fuera,
+            // igual que la analítica: es un flujo marginal que no merece el JS.
+            'session' => $isaudio ? '' : token::endpoint_url('heartbeat.php', $filename, $token,
+                $expires, $courseid, $tokenuserid),
+            'revoked' => get_string('accessrevoked', 'filter_impronta'),
+            'evicted' => get_string('sessionevicted', 'filter_impronta'),
         ];
         $attrs = '';
         foreach ($data as $key => $value) {
@@ -407,6 +413,15 @@ HTML;
             'playlistUrl' => $playlisturl,
             'expiredText' => s(get_string('sessionexpired', 'filter_impronta')),
             'heartbeatSeconds' => 15,
+            // El latido de la SESIÓN, que no es el de la analítica de arriba.
+            // Aquel manda eventos de visionado cada 15 s; este mantiene viva la
+            // sesión de reproducción, reporta cuánto vídeo se ha visto -el
+            // denominador de la detección- y trae de vuelta si hay que parar.
+            // El intervalo real lo dice Reelo en su respuesta.
+            'sessionUrl' => token::endpoint_url('heartbeat.php', $filename, $token, $expires, $courseid,
+                $userid),
+            'revokedText' => s(get_string('accessrevoked', 'filter_impronta')),
+            'evictedText' => s(get_string('sessionevicted', 'filter_impronta')),
         ];
 
         // JSON_HEX_TAG no es opcional: la etiqueta del watermark sale de campos

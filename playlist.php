@@ -151,9 +151,14 @@ header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
 // a ESTE alumno y a ESTA sesión. Un proxy que la cachee se la estaría sirviendo
 // al siguiente que pase.
 header('Cache-Control: no-store');
-// El identificador de sesión, para que el reproductor pueda latir. Va en una
-// cabecera porque el cuerpo tiene que seguir siendo un .m3u8 y nada más.
+// El identificador de sesión se guarda aquí, no se le manda al navegador.
+//
+// Quien pide esta URL es el reproductor de vídeo, no nuestro JavaScript, así
+// que una cabecera de respuesta no la vería nadie. Guardándolo en la caché del
+// sitio, heartbeat.php lo recupera por su cuenta y el cliente no llega a
+// conocerlo — que además es lo correcto: así no puede latir por una sesión
+// ajena.
 if (!empty($sesion['sessionId'])) {
-    header('X-Impronta-Session: ' . $sesion['sessionId']);
+    reelo_api::remember_session($path, (int) $userid, (string) $sesion['sessionId']);
 }
 echo $sesion['playlist'];

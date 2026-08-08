@@ -284,6 +284,135 @@ class reelo_api {
     }
 
     /**
+     * Cuánto se recuerda el identificador de una sesión de reproducción.
+     *
+     * Basta con que cubra una clase larga. Pasado eso se olvida, y el motivo no
+     * es el espacio: un identificador viejo mandado a un latido resucitaría en
+     * Reelo una sesión que ya había muerto por inactividad, y el recuento de
+     * sesiones simultáneas -que es lo que detecta cuentas compartidas- contaría
+     * fantasmas.
+     */
+    const SESSION_MEMORY = 21600;
+
+    /**
+     * Clave de caché de la sesión de un alumno en una clase.
+     *
+     * Se construye sobre subject() y no sobre el id de usuario porque ya
+     * resuelve la identidad por los dos caminos -sesión de navegador y token
+     * firmado de la app- y no expone el id en la caché.
+     *
+     * @param string $path
+     * @param int $userid
+     * @return string vacío si no hay alumno identificable
+     */
+    private static function session_key(string $path, int $userid): string {
+        $subject = self::subject($userid);
+        return $subject === '' ? '' : sha1($subject . '|' . $path);
+    }
+
+    /**
+     * Guarda el identificador de la sesión que acaba de abrir la playlist.
+     *
+     * Existe porque quien pide la playlist es el reproductor de vídeo, no
+     * nuestro JavaScript: la respuesta lleva el identificador en una cabecera
+     * que el JS no llega a ver. Guardándolo aquí, el latido puede recuperarlo
+     * sin que el navegador tenga que conocerlo, que además es mejor: el cliente
+     * no puede latir por una sesión que no sea la suya.
+     *
+     * @param string $path
+     * @param int $userid
+     * @param string $sessionid
+     */
+    public static function remember_session(string $path, int $userid, string $sessionid): void {
+        $key = self::session_key($path, $userid);
+        if ($key === '' || $sessionid === '') {
+            return;
+        }
+        $cache = \cache::make_from_params(\cache_store::MODE_APPLICATION, 'filter_impronta', 'sessions');
+        $cache->set($key, ['id' => $sessionid, 'at' => time()]);
+    }
+
+    /**
+     * Recupera el identificador de sesión guardado por remember_session().
+     *
+     * @param string $path
+     * @param int $userid
+     * @return string vacío si no hay ninguno vigente
+     */
+    public static function recall_session(string $path, int $userid): string {
+        $key = self::session_key($path, $userid);
+        if ($key === '') {
+            return '';
+        }
+        $cache = \cache::make_from_params(\cache_store::MODE_APPLICATION, 'filter_impronta', 'sessions');
+        $stored = $cache->get($key);
+        if (!is_array($stored) || empty($stored['id'])) {
+            return '';
+        }
+        if (time() - (int) ($stored['at'] ?? 0) > self::SESSION_MEMORY) {
+            return '';
+        }
+        return (string) $stored['id'];
+    }
+
+    /**
+     * Manda un latido de la sesión de reproducción y devuelve lo que conteste
+     * Reelo: {evicted, blocked, heartbeatSeconds}.
+     *
+     * `watchedSeconds` no es telemetría, es el DENOMINADOR de la detección de
+     * descarga masiva: sin él un alumno viendo clase es indistinguible de
+     * alguien que se la está bajando, porque los dos piden segmentos a ritmo
+     * parecido durante un rato. Reelo lo acota al intervalo entre latidos, así
+     * que inflarlo no sirve de nada.
+     *
+     * @param string $path
+     * @param int $userid usuario firmado en el token (0 = el de la sesión)
+     * @param string $sessionid
+     * @param int $watched segundos de vídeo consumidos desde el latido anterior
+     * @return array|null null si falla
+     */
+    public static function heartbeat(string $path, int $userid, string $sessionid, int $watched): ?array {
+        global $CFG;
+
+        require_once($CFG->libdir . '/filelib.php');
+
+        $subject = self::subject($userid);
+        if ($subject === '' || $sessionid === '') {
+            return null;
+        }
+
+        $curl = new \curl();
+        $curl->setHeader([
+            'Authorization: Bearer ' . config::required('apikey'),
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ]);
+        $response = $curl->post(rtrim(self::URL, '/') . '/player/heartbeat', json_encode([
+            'classId' => $path,
+            'sessionId' => $sessionid,
+            'watchedSeconds' => $watched,
+            'userId' => $subject,
+        ]), [
+            // Corto a propósito: esto corre cada dos minutos por cada alumno
+            // reproduciendo. Un Reelo lento no puede clavar un worker de
+            // PHP-FPM por cada uno, que es un DoS autoinfligido.
+            'CURLOPT_TIMEOUT' => 5,
+            'CURLOPT_CONNECTTIMEOUT' => 3,
+            'CURLOPT_FOLLOWLOCATION' => 0,
+        ]);
+
+        $info = $curl->get_info();
+        $httpcode = (int) ($info['http_code'] ?? 0);
+        if ($curl->get_errno() || $httpcode < 200 || $httpcode >= 300) {
+            debugging('filter_impronta: heartbeat failed (HTTP ' . $httpcode . ')', DEBUG_NORMAL);
+            return null;
+        }
+
+        $decoded = json_decode((string) $response, true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
      * Reenvía un lote de eventos de analítica al POST /events de Reelo con el
      * apikey del tenant. Lo llama solo events.php, server-side: el apikey no
      * puede aparecer nunca en una página que el navegador del alumno pueda leer.

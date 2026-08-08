@@ -14,7 +14,7 @@
 //
 // cfg = {
 //   targetId, watermarkLabel, eventsUrl, subject, videoPath, playlistUrl,
-//   expiredText, heartbeatSeconds
+//   expiredText, heartbeatSeconds, sessionUrl, revokedText, evictedText
 // }
 window.ReeloPlayerExtras = function(cfg) {
   'use strict';
@@ -64,37 +64,107 @@ window.ReeloPlayerExtras = function(cfg) {
       if (!player.paused()) { push('heartbeat', player.currentTime() || 0); flush(); }
     }, (cfg.heartbeatSeconds || 15) * 1000);
 
+    // --- Latido de la sesión de reproducción ------------------------------
+    // Distinto del beacon de arriba, que es analítica. Este mantiene viva la
+    // sesión, reporta cuánto vídeo se ha visto -el denominador de la detección
+    // de descarga masiva- y trae de vuelta si hay que parar.
+    //
+    // El identificador de sesión NO está aquí: lo guardó playlist.php en el
+    // servidor y heartbeat.php lo recupera. Este JS no puede latir por una
+    // sesión ajena porque no conoce ninguna.
+    var vistos = 0;
+    var ultimoTiempo = player.currentTime() || 0;
+    var sesionTerminada = false;
+    var latidoTimer = null;
+
+    // Los segundos se acumulan de los avances pequeños de currentTime y no del
+    // reloj: así una pausa no cuenta, un rebobinado no resta, y ver a 2x cuenta
+    // el doble, que es lo que Reelo compara contra los segmentos servidos.
+    player.on('timeupdate', function() {
+      var t = player.currentTime() || 0;
+      var delta = t - ultimoTiempo;
+      // timeupdate salta unas cuatro veces por segundo: más de dos segundos es
+      // un salto en la línea de tiempo, no vídeo visto.
+      if (delta > 0 && delta < 2) { vistos += delta; }
+      ultimoTiempo = t;
+    });
+
+    function parar(texto) {
+      sesionTerminada = true;
+      if (latidoTimer) { clearInterval(latidoTimer); latidoTimer = null; }
+      try { player.pause(); } catch (e) {}
+      aviso(texto);
+    }
+
+    function latir() {
+      if (!cfg.sessionUrl || sesionTerminada) { return; }
+      var enviados = Math.round(vistos);
+      fetch(cfg.sessionUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({watchedSeconds: enviados})
+      }).then(function(res) {
+        if (!res.ok) { return null; }
+        // Los segundos solo se descuentan si el latido llegó. Perderlos
+        // inflaría la proporción de segmentos servidos por minuto visto y
+        // acercaría una alerta a un alumno que no ha hecho nada raro.
+        vistos -= enviados;
+        return res.json();
+      }).then(function(r) {
+        if (!r) { return; }
+        if (r.blocked) { parar(cfg.revokedText); }
+        else if (r.evicted) { parar(cfg.evictedText); }
+      }).catch(function() {});
+    }
+
+    if (cfg.sessionUrl) {
+      // 120 s de partida; el servidor manda el suyo en cada respuesta, pero
+      // hace falta uno para el primero.
+      latidoTimer = setInterval(latir, 120000);
+    }
+
     player.on('dispose', function() {
       clearInterval(heartbeat);
+      if (latidoTimer) { clearInterval(latidoTimer); }
       flush();
     });
 
-    // --- Recuperacion ante 403 (firma caducada a mitad de clase) ---------
-    // Los segmentos llevan la firma horneada en la playlist; si caduca a
-    // mitad de leccion, el reproductor ve una rafaga de 403 y dispara error.
+    // --- Recuperacion ante 403 ------------------------------------------
+    // Un 403 en un segmento ya no significa solo "la firma caduco": ahora
+    // puede ser tambien que se le haya revocado el acceso al alumno, y los
+    // dos casos piden lo contrario -uno recargar, el otro parar y explicar-.
+    // Distinguirlos leyendo el mensaje de error de video.js no es fiable, asi
+    // que se hace un latido: la respuesta ya sabe si esta bloqueado.
+    //
     // Un solo reintento por caducidad: tras cada error, guardar la posicion,
-    // recargar la playlist con cache-buster (playlist.php vuelve a firmar con
-    // Reelo si la firma anterior caduco), restaurar la posicion y reanudar.
-    // recovered se resetea en el primer 'playing' posterior: una sesion larga
-    // que sufra varias caducidades (una cada firma) se recupera cada vez. Si
-    // la recarga no llega a reproducir, recovered sigue true y el siguiente
-    // error muestra el mensaje explicito.
+    // recargar la playlist con cache-buster (playlist.php pide una playlist
+    // nueva a Reelo), restaurar la posicion y reanudar. recovered se resetea
+    // en el primer 'playing' posterior. Si la recarga no llega a reproducir,
+    // recovered sigue true y el siguiente error muestra el mensaje explicito.
     var recovered = false;
 
-    function showSessionExpired() {
+    function aviso(texto) {
       var el = document.getElementById(targetId);
-      if (!el) { return; }
+      if (!el || !texto) { return; }
       var msg = document.createElement('div');
       msg.setAttribute('role', 'alert');
       msg.className = 'alert alert-warning';
       msg.style.cssText = 'margin:0.5em 0;padding:0.6em 1em;';
-      msg.textContent = cfg.expiredText;
+      msg.textContent = texto;
       el.parentNode.insertBefore(msg, el.nextSibling);
     }
 
     player.on('error', function() {
+      // Ya se sabe que no hay nada que recuperar: el mensaje esta puesto.
+      if (sesionTerminada) { return; }
+
+      // Pregunta al servidor por el motivo real. Si es un bloqueo, latir()
+      // para el reproductor y pone el mensaje que toca; el reintento de abajo
+      // no llega a servir de nada porque la playlist nueva daria 403 igual.
+      latir();
+
       if (recovered) {
-        showSessionExpired();
+        aviso(cfg.expiredText);
         return;
       }
       recovered = true;

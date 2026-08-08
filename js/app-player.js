@@ -154,6 +154,70 @@
     });
   }
 
+  // Latido de la sesión de reproducción. Ver heartbeat.php: mantiene la sesión
+  // viva, reporta cuánto vídeo se ha visto -el denominador de la detección de
+  // descarga masiva- y devuelve si hay que parar.
+  //
+  // El identificador de sesión no está aquí: lo guardó playlist.php en el
+  // servidor. Este JS no puede latir por una sesión ajena porque no conoce
+  // ninguna.
+  function sesion(player, cfg, el) {
+    if (!cfg.session) { return; }
+
+    var vistos = 0;
+    var ultimo = 0;
+    var terminada = false;
+    var timer = null;
+
+    // De los avances pequeños de currentTime y no del reloj: una pausa no
+    // cuenta, un rebobinado no resta, y ver a 2x cuenta el doble.
+    player.on('timeupdate', function() {
+      var t = 0;
+      try { t = player.currentTime() || 0; } catch (e) { return; }
+      var delta = t - ultimo;
+      if (delta > 0 && delta < 2) { vistos += delta; }
+      ultimo = t;
+    });
+
+    function parar(texto) {
+      terminada = true;
+      if (timer) { clearInterval(timer); timer = null; }
+      try { player.pause(); } catch (e) {}
+      diag('sesion:parada');
+      if (!texto) { return; }
+      var msg = document.createElement('p');
+      msg.setAttribute('role', 'alert');
+      msg.style.cssText = 'margin:0.6em 0;padding:0.6em 1em;background:#fff3cd;color:#664d03;border-radius:6px;';
+      msg.textContent = texto;
+      el.appendChild(msg);
+    }
+
+    function latir() {
+      if (terminada) { return; }
+      var enviados = Math.round(vistos);
+      fetch(cfg.session, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({watchedSeconds: enviados})
+      }).then(function(res) {
+        if (!res.ok) { return null; }
+        // Solo se descuentan si el latido llegó: perderlos inflaría la
+        // proporción de segmentos por minuto visto y acercaría una alerta a un
+        // alumno que no ha hecho nada raro.
+        vistos -= enviados;
+        return res.json();
+      }).then(function(r) {
+        if (!r) { return; }
+        if (r.blocked) { parar(cfg.revoked); }
+        else if (r.evicted) { parar(cfg.evicted); }
+      }).catch(function() {});
+    }
+
+    timer = setInterval(latir, 120000);
+    player.on('error', function() { latir(); });
+    player.on('dispose', function() { if (timer) { clearInterval(timer); } });
+  }
+
   // El servidor ya filtró y el marcador trae los datos firmados: no hay nada
   // que preguntarle. Si faltan, no se monta nada y el alumno se queda con el
   // enlace al navegador que trae el propio marcador.
@@ -164,7 +228,10 @@
       subject: el.getAttribute('data-impronta-subject'),
       path: el.getAttribute('data-impronta-path'),
       watermark: el.getAttribute('data-impronta-watermark'),
-      color: el.getAttribute('data-impronta-color')
+      color: el.getAttribute('data-impronta-color'),
+      session: el.getAttribute('data-impronta-session'),
+      revoked: el.getAttribute('data-impronta-revoked'),
+      evicted: el.getAttribute('data-impronta-evicted')
     };
     if (!cfg.playlist) { diag('montar:sin-datos'); return; }
     diag('montar:marcador');
@@ -237,6 +304,7 @@
         el.textContent = '';
       }).then(function() {
         analytics(player, cfg);
+        sesion(player, cfg, el);
       });
     }).catch(function(e) {
       // Marcador intacto: queda el botón de abrir en el navegador. El fallo
