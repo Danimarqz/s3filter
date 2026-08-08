@@ -258,6 +258,11 @@ class impronta_api {
         $response = $curl->post(rtrim(self::URL, '/') . '/player/playlist', json_encode([
             'classId' => $path,
             'userId' => $subject,
+            // La IP del ALUMNO. Sin esto, Impronta registraría la del servidor
+            // de este Moodle en todas las sesiones -la petición la hace el PHP,
+            // no el navegador-, y el administrador vería una IP que parece
+            // informar y no informa de nada.
+            'ip' => request::ip(),
         ]), [
             'CURLOPT_TIMEOUT' => 10,
             'CURLOPT_CONNECTTIMEOUT' => 5,
@@ -313,6 +318,12 @@ class impronta_api {
      * Se construye sobre subject() y no sobre el id de usuario porque ya
      * resuelve la identidad por los dos caminos -sesión de navegador y token
      * firmado de la app- y no expone el id en la caché.
+     *
+     * Es por (alumno, clase) y NO por pestaña: varias pestañas del mismo alumno
+     * comparten entrada, así que solo late la última que abrió el vídeo. Es
+     * deliberado —ver ilter_impronta\player: el recuento de sesiones es
+     * telemetría, no un control de acceso— y no afecta a la reproducción, que
+     * depende del token de segmento y no de la sesión.
      *
      * @param string $path
      * @param int $userid
@@ -403,6 +414,8 @@ class impronta_api {
         $response = $curl->post(rtrim(self::URL, '/') . '/player/heartbeat', json_encode([
             'classId' => $path,
             'sessionId' => $sessionid,
+            // Ver playlist(): la del alumno, no la de este servidor.
+            'ip' => request::ip(),
             'watchedSeconds' => $watched,
             'userId' => $subject,
         ]), [
