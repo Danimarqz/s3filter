@@ -1,6 +1,6 @@
 <?php
 /**
- * Token HMAC que comparten embed.php, playlist.php, events.php y cookies.php.
+ * Token HMAC que comparten embed.php, playlist.php y events.php.
  *
  * @package   filter_impronta
  */
@@ -107,7 +107,7 @@ class token {
     }
 
     /**
-     * Autorización común de embed.php, playlist.php, events.php y cookies.php:
+     * Autorización común de embed.php, playlist.php y events.php:
      * valida el token HMAC y decide si quien pide puede reproducir esta clase.
      *
      * Los endpoints hacían lo mismo con varias copias del mismo bloque, que es

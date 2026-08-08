@@ -1,9 +1,16 @@
 <?php
 /**
- * Empaquetado de la firma de CloudFront: URLs firmadas, cookies y descarga.
+ * Empaquetado de la firma de CloudFront: URL firmada y descarga server-side.
  *
- * La firma la emite Reelo (ver reelo_api::signature). Aquí solo se decide cómo
- * viaja hasta el navegador y cómo se pide el media con ella.
+ * La firma la emite Reelo (ver reelo_api::signature) y ya solo la usan los
+ * subtítulos, que este plugin descarga y sirve él.
+ *
+ * Aquí hubo también un modo cookie, que ponía la firma en el navegador del
+ * alumno como cookies CloudFront-*. Se retiró: esas cookies cubren
+ * "Materia/Clase/*" durante horas, o sea la clase entera, en un sitio del que
+ * se pueden copiar. Es exactamente lo que el vídeo servido segmento a segmento
+ * existe para impedir, y tener las dos cosas a la vez habría dejado abierta la
+ * puerta que la otra vigila.
  *
  * @package   filter_impronta
  */
@@ -13,30 +20,23 @@ namespace filter_impronta;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Firma en la URL, firma en cookies, y descarga server-side del media.
+ * Firma en la URL y descarga server-side del media.
  */
 class cloudfront {
 
     /**
      * Pega la query de una firma a una URL de CloudFront.
      *
-     * En modo cookie NO se firma la URL: la autorización viaja en las cookies
-     * CloudFront-* que puso cookies.php, y ese es justamente el premio del modo.
-     * Con la firma en la query queda horneada en la playlist que el reproductor
-     * retiene, así que no se puede rotar sin reescribir la playlist —y reescribir
-     * la playlist reinicia la reproducción—, lo que obliga a TTLs de horas. Fuera
-     * de la URL, la firma se puede renovar por detrás mientras el alumno ve la
-     * clase.
+     * Hoy solo lo usan los subtítulos, y la URL firmada que devuelve NO baja al
+     * navegador: la descarga playlist.php y sirve el contenido él. El vídeo ya
+     * no pasa por aquí — sus segmentos los firma el backend de uno en uno,
+     * después de comprobar que el alumno sigue teniendo acceso.
      *
      * @param string $url
      * @param array $signature como la devuelve reelo_api::signature()
-     * @param bool $cookiemode
      * @return string
      */
-    public static function sign_url(string $url, array $signature, bool $cookiemode = false): string {
-        if ($cookiemode) {
-            return $url;
-        }
+    public static function sign_url(string $url, array $signature): string {
         $separator = strpos($url, '?') === false ? '?' : '&';
         return $url . $separator . $signature['query'];
     }
@@ -51,89 +51,6 @@ class cloudfront {
         return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
-    /**
-     * Dominio común entre este Moodle y el CDN del tenant, o cadena vacía si no
-     * comparten uno.
-     *
-     * Es lo que decide si se puede usar el modo cookie: una cookie con
-     * Domain=.opositatcae.es viaja desde moodle.opositatcae.es hasta
-     * reelo.cdn.moodle.opositatcae.es porque comparten dominio registrable. Con
-     * el CDN en dzqvsfq0bfq1j.cloudfront.net no comparten nada y no hay cookie
-     * posible: ese tenant se queda en URLs firmadas.
-     *
-     * @param string $baseurl raíz del media, como la devuelve reelo_api::signature
-     * @return string dominio para la cookie (con punto inicial) o ''
-     */
-    public static function cookie_domain(string $baseurl): string {
-        global $CFG;
-
-        $mediahost = parse_url($baseurl, PHP_URL_HOST) ?: '';
-        $sitehost = parse_url($CFG->wwwroot, PHP_URL_HOST) ?: '';
-        if ($mediahost === '' || $sitehost === '') {
-            return '';
-        }
-
-        // Dominio registrable aproximado: las dos últimas etiquetas. Vale para
-        // dominios normales; con sufijos de dos niveles (.co.uk) se quedaría corto
-        // y simplemente no activaría el modo cookie, que es el fallo seguro.
-        $base = implode('.', array_slice(explode('.', $sitehost), -2));
-        if ($base === '' || substr($mediahost, -strlen($base)) !== $base) {
-            return '';
-        }
-
-        return '.' . $base;
-    }
-
-    /**
-     * Pone las cookies firmadas de CloudFront para la clase que cubre $signature.
-     *
-     * Las emite la misma respuesta que sirve la playlist, no una llamada aparte, y
-     * eso evita una carrera: si el reproductor pidiera las cookies por un lado y
-     * la playlist por otro, los primeros segmentos podrían salir antes de que la
-     * cookie estuviera puesta y llegarían 403 sin causa visible. Cuando el
-     * navegador tiene la playlist, tiene ya la cookie.
-     *
-     * @param array $signature como la devuelve reelo_api::signature()
-     * @return bool false si el tenant no admite modo cookie o la firma no sirve
-     */
-    public static function set_cookies(array $signature): bool {
-        $domain = self::cookie_domain($signature['baseurl'] ?? '');
-        if ($domain === '') {
-            return false;
-        }
-
-        // Reelo devuelve la firma como query string ya montada; las cookies son
-        // los mismos tres valores con otros nombres. Por eso el modo cookie no
-        // necesita ningún cambio en el backend.
-        parse_str($signature['query'] ?? '', $partes);
-        $cookies = [
-            'CloudFront-Policy' => $partes['Policy'] ?? '',
-            'CloudFront-Signature' => $partes['Signature'] ?? '',
-            'CloudFront-Key-Pair-Id' => $partes['Key-Pair-Id'] ?? '',
-        ];
-        foreach ($cookies as $valor) {
-            if ($valor === '') {
-                return false;
-            }
-        }
-
-        // HttpOnly porque el JavaScript no las necesita, y así una inyección en la
-        // página no puede robarlas. SameSite=Lax basta: la página y el CDN son
-        // same-site, que es la precondición de todo este modo.
-        $opciones = [
-            'expires' => (int) ($signature['expiresat'] ?? 0),
-            'path' => '/',
-            'domain' => $domain,
-            'secure' => true,
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ];
-        foreach ($cookies as $nombre => $valor) {
-            setcookie($nombre, $valor, $opciones);
-        }
-
-        return true;
-    }
 
     /**
      * Descarga una URL que ya lleva firma válida, con un único reintento rápido.

@@ -188,6 +188,102 @@ class reelo_api {
     }
 
     /**
+     * Pide al backend la playlist de una clase, ya lista para servir.
+     *
+     * Sustituye a signature() para el vídeo. La diferencia no es de estilo: una
+     * firma de CloudFront ya emitida NO SE PUEDE REVOCAR, y la que devuelve
+     * signature() cubre "Materia/Clase/*", así que mientras dure vale para
+     * bajarse la clase entera. La playlist que devuelve esto apunta cada
+     * segmento a una Lambda que comprueba el bloqueo antes de servirlo, y no
+     * lleva ninguna firma dentro.
+     *
+     * NO se cachea, al contrario que signature(). Cada llamada abre una sesión
+     * de reproducción con su propio identificador; reutilizar una respuesta
+     * haría que dos alumnos compartieran sesión, y el recuento de sesiones
+     * simultáneas -que es lo que detecta cuentas compartidas- dejaría de
+     * significar nada.
+     *
+     * Devuelve el cuerpo decodificado: sessionId, playlist, playlistUrl,
+     * segmentCount, heartbeatSeconds, watermark.
+     *
+     * @param string $path ruta lógica Materia/Clase
+     * @param string|null $reason parámetro de salida: 'denied', 'unavailable' o null
+     * @param int $userid usuario firmado en el token (0 = usar el de la sesión)
+     * @return array|null null si falla
+     */
+    public static function playlist(string $path, ?string &$reason = null, int $userid = 0): ?array {
+        global $CFG;
+
+        $reason = null;
+
+        // Ver signature(): la clase curl de Moodle no se autocarga y este es un
+        // endpoint ligero donde nadie la ha incluido ya.
+        require_once($CFG->libdir . '/filelib.php');
+
+        // El backend distingue "viene del Moodle de esta academia, de parte de
+        // este alumno" de "viene con el JWT de un alumno" por si este campo va
+        // vacío. Si lo mandáramos vacío intentaría validar el apikey como JWT y
+        // respondería 401, que no se parece en nada al problema real.
+        $subject = self::subject($userid);
+        if ($subject === '') {
+            debugging('filter_impronta: no stable subject for this viewer', DEBUG_NORMAL);
+            $reason = 'denied';
+            return null;
+        }
+
+        $apikey = config::required('apikey');
+
+        $curl = new \curl();
+        $curl->setHeader([
+            'Authorization: Bearer ' . $apikey,
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ]);
+        // Solo el seudónimo. El nombre y el DNI se quedan aquí: el watermark lo
+        // pinta este plugin con los datos de Moodle (ver \filter_impronta\
+        // watermark), así que no hay ningún motivo para que salgan del sitio.
+        $response = $curl->post(rtrim(self::URL, '/') . '/player/playlist', json_encode([
+            'classId' => $path,
+            'userId' => $subject,
+        ]), [
+            'CURLOPT_TIMEOUT' => 10,
+            'CURLOPT_CONNECTTIMEOUT' => 5,
+            'CURLOPT_FOLLOWLOCATION' => 0,
+        ]);
+
+        $info = $curl->get_info();
+        $httpcode = (int) ($info['http_code'] ?? 0);
+
+        if ($curl->get_errno()) {
+            debugging('filter_impronta: Reelo API unreachable: ' . $curl->error, DEBUG_NORMAL);
+            $reason = 'unavailable';
+            return null;
+        }
+        if ($httpcode === 401 || $httpcode === 403 || $httpcode === 409) {
+            // Apikey mala o revocada, tenant desactivado, alumno bloqueado, o
+            // una clase que todavía está en el formato antiguo de pistas
+            // separadas. Ninguno es transitorio.
+            debugging('filter_impronta: Reelo API rejected this request (HTTP ' . $httpcode . ')', DEBUG_NORMAL);
+            $reason = 'denied';
+            return null;
+        }
+        if ($httpcode < 200 || $httpcode >= 300) {
+            debugging('filter_impronta: Reelo API returned HTTP ' . $httpcode, DEBUG_NORMAL);
+            $reason = 'unavailable';
+            return null;
+        }
+
+        $decoded = json_decode((string) $response, true);
+        if (!is_array($decoded) || empty($decoded['playlist'])) {
+            debugging('filter_impronta: malformed playlist response from the Reelo API', DEBUG_NORMAL);
+            $reason = 'unavailable';
+            return null;
+        }
+
+        return $decoded;
+    }
+
+    /**
      * Reenvía un lote de eventos de analítica al POST /events de Reelo con el
      * apikey del tenant. Lo llama solo events.php, server-side: el apikey no
      * puede aparecer nunca en una página que el navegador del alumno pueda leer.

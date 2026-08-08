@@ -136,38 +136,20 @@ class player {
             $token = token::generate($filename, $expires, $courseid, request::ip(), $tokenuserid);
         }
 
-        // Modo de autorización del media, decidido una sola vez y aquí arriba
-        // porque lo necesitan tanto la URL de la playlist como la del beacon de
-        // analítica (para poder contar por qué camino se reproduce cada clase).
+        // Ya no hay modo cookie, y su desaparición es deliberada.
         //
-        //   cookies       -> el tenant tiene dominio propio bajo el de este Moodle
-        //   urls firmadas -> cualquier otro caso, y siempre en la app
+        // Consistía en poner en el navegador del alumno las cookies firmadas de
+        // CloudFront, que cubren "Materia/Clase/*". Es decir: la clase entera,
+        // durante horas, en un sitio del que se pueden copiar. Servía para que la
+        // firma no viajara horneada en cada segmento, pero ese problema lo
+        // resuelve mejor la playlist que ahora monta el backend, donde no hay
+        // ninguna firma que copiar — solo un token que caduca y que se comprueba
+        // contra la lista de bloqueos en CADA segmento.
         //
-        // Es la diferencia entre que la firma viaje fuera de la playlist (rotable,
-        // TTL corto) o horneada en cada segmento (TTL de horas).
-        //
-        // La app queda FUERA del modo cookie aunque el tenant tenga dominio
-        // propio: su webview está en localhost, que respecto al CDN es cross-site,
-        // así que las cookies no viajarían y todos los segmentos darían 403. Es la
-        // fila "webview" de la tabla de modos: ahí las URLs firmadas no son deuda
-        // técnica, son el único camino que funciona.
-        //
-        // Ojo con la política CORS de CloudFront: si sirve el comodín "*", el
-        // estándar prohíbe usar esa respuesta en peticiones con credenciales, que
-        // es como pide los segmentos el reproductor en este modo. Para que el modo
-        // cookie funcione de verdad hace falta que CloudFront devuelva el origen
-        // exacto y Access-Control-Allow-Credentials.
-        $cookiemode = false;
-        if (!$isaudio && !$ismobileapp) {
-            $razonfirma = null;
-            $firma = reelo_api::signature($filename, $razonfirma, $tokenuserid);
-            $cookiemode = $firma && cloudfront::cookie_domain($firma['baseurl']) !== '';
-        }
-
+        // Mantener las dos cosas a la vez habría sido lo peor de todo: el camino
+        // nuevo comprobando bloqueos segmento a segmento mientras el navegador
+        // guarda unas cookies que se saltan la comprobación entera.
         $extraparams = $isaudio ? ['a' => 1] : [];
-        if ($cookiemode) {
-            $extraparams['modo'] = 'cookie';
-        }
 
         $playlisturl = token::endpoint_url('playlist.php', $filename, $token, $expires, $courseid,
             $tokenuserid, $extraparams);
@@ -180,7 +162,7 @@ class player {
         // analitica, ni recuperacion): a proposito, es un flujo marginal que no
         // merece el JS extra.
         $extrahtml = $isaudio ? '' : self::extras($escapedid, $filename, $token, $expires,
-            $courseid, $playlisturl, $tokenuserid, $cookiemode);
+            $courseid, $playlisturl, $tokenuserid);
 
         if ($cacheable && isset($rendercache[$cachekey])) {
             return $rendercache[$cachekey] . $extrahtml;
@@ -224,13 +206,6 @@ HTML;
         }
 
         $setupconfig = $isaudio ? ['audioOnlyMode' => true] : ['fluid' => true];
-
-        if ($cookiemode) {
-            // withCredentials es obligatorio: la página está en el subdominio del
-            // Moodle y el media en el del CDN, así que sin él el navegador no
-            // manda las cookies CloudFront-* a las peticiones de los segmentos.
-            $setupconfig['html5'] = ['vhs' => ['withCredentials' => true]];
-        }
 
         if (!empty($options['playbackrates']) && is_array($options['playbackrates'])) {
             $normalized = [];
@@ -405,13 +380,10 @@ HTML;
      * @param int $courseid curso donde se incrustó (0 = ninguno)
      * @param string $playlisturl URL de playlist.php, para la recuperación ante 403
      * @param int $userid usuario firmado en el token (0 = usar el de la sesión)
-     * @param bool $cookiemode si el media se autoriza por cookies en vez de por
-     *     firma en la URL; viaja hasta la analítica para poder contar por qué
-     *     camino se reproduce cada clase
      * @return string
      */
     private static function extras(string $escapedid, string $filename, string $token, int $expires,
-            int $courseid, string $playlisturl, int $userid = 0, bool $cookiemode = false): string {
+            int $courseid, string $playlisturl, int $userid = 0): string {
         global $USER;
 
         // El usuario del watermark sale del token cuando no hay sesión (la app
@@ -429,7 +401,7 @@ HTML;
             'targetId' => $escapedid,
             'watermarkLabel' => $watermarkuser ? watermark::label($watermarkuser) : '',
             'eventsUrl' => token::endpoint_url('events.php', $filename, $token, $expires, $courseid,
-                $userid, $cookiemode ? ['modo' => 'cookie'] : []),
+                $userid),
             'subject' => reelo_api::subject($userid),
             'videoPath' => $filename,
             'playlistUrl' => $playlisturl,

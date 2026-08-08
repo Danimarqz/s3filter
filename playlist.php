@@ -1,15 +1,30 @@
 <?php
 /**
- * Serves an HLS playlist (.m3u8) or a WebVTT subtitle track, rewritten so
- * the browser can fetch the media straight from CloudFront.
+ * Sirve la playlist HLS de una clase, o una pista de subtítulos.
  *
- * ACCESS CONTROL — both layers apply to every request here, including
- * renditions and subtitles:
+ * CONTROL DE ACCESO — las dos capas aplican a todas las peticiones:
  *
- *   1. The signed `c` (course) parameter must survive HMAC validation and
- *      the viewer must be currently enrolled in that course.
- *   2. The CloudFront signature is requested from Reelo with this site's
- *      API key, and Reelo scopes it to this class alone.
+ *   1. El parámetro `c` (curso) firmado tiene que sobrevivir a la validación
+ *      HMAC, y el espectador tiene que estar matriculado AHORA en ese curso.
+ *      Esto lo comprueba este sitio, que es el único que lo sabe.
+ *   2. Reelo comprueba lo suyo con el apikey de este sitio.
+ *
+ * LA PLAYLIST YA NO LLEVA FIRMAS DENTRO, y ese es el cambio de fondo.
+ *
+ * Antes este fichero pedía una firma de CloudFront y la pegaba a cada segmento
+ * del .m3u8. El problema es que una firma emitida NO SE PUEDE REVOCAR y esa
+ * cubría "Materia/Clase/*": mientras durase, quien la sacara del navegador se
+ * bajaba la clase entera, y bloquear a un alumno no surtía efecto hasta que
+ * caducara. Ahora la playlist la monta el backend y cada una de sus líneas
+ * apunta a una Lambda que comprueba el bloqueo ANTES de servir el segmento, así
+ * que revocar el acceso muerde en el siguiente, unos diez segundos.
+ *
+ * Por el mismo motivo desaparecieron de aquí el modo cookie -las cookies de
+ * CloudFront tienen exactamente el mismo alcance que aquella firma- y la
+ * reescritura de master y renditions, que el contenido muxeado no tiene.
+ *
+ * Los subtítulos siguen viniendo del CDN con una firma, pero esa no baja nunca
+ * al navegador: los descarga este PHP y los sirve él.
  *
  * @package   filter_impronta
  */
@@ -17,7 +32,6 @@
 require_once(__DIR__ . '/../../config.php');
 
 use filter_impronta\cloudfront;
-use filter_impronta\hls;
 use filter_impronta\reelo_api;
 use filter_impronta\request;
 use filter_impronta\token;
@@ -34,8 +48,6 @@ $courseid = optional_param('c', 0, PARAM_INT);
 // Usuario firmado dentro del token (camino de la app, sin cookie de sesión).
 // Manipularlo invalida el HMAC, asi que no hace falta confiar en el valor.
 $userid = optional_param('u', 0, PARAM_INT);
-$audio = optional_param('a', 0, PARAM_INT);
-$rawr = optional_param('r', null, PARAM_RAW_TRIMMED);
 $rawvtt = optional_param('vtt', null, PARAM_ALPHANUMEXT);
 
 /**
@@ -50,16 +62,6 @@ function impronta_playlist_fail(int $status, string $message): void {
 
 if (empty($rawf)) {
     impronta_playlist_fail(400, 'Falta el parámetro f.');
-}
-
-// `r` (rendition): .m3u8 basename, no path separators.
-$rendition = null;
-if ($rawr !== null && $rawr !== '') {
-    $candidate = basename(str_replace('\\', '/', $rawr));
-    if ($candidate !== $rawr || strpos($rawr, '..') !== false || !hls::is_safe_rendition($candidate)) {
-        impronta_playlist_fail(400, 'Parámetro r inválido.');
-    }
-    $rendition = $candidate;
 }
 
 // `vtt` (subtitle language): 2-5 alphanumeric characters.
@@ -92,40 +94,26 @@ if ($denied !== null) {
 }
 
 /* --------------------------------------------------------------------- */
-/* Layer 1: CloudFront signature from Reelo                               */
-/* --------------------------------------------------------------------- */
-
-// No existe un prefijo "audio/": los renditions de video y audio viven
-// juntos bajo Materia/Clase/, y la policy de "Materia/Clase/*" ya cubre el
-// audio. Firmar "audio/Materia/Clase" cambiaba el ambito a base/audio/
-// Materia/* (toda una 'materia' inexistente) y fallaba con 502.
-$signpath = $path;
-
-$reason = null;
-$signature = reelo_api::signature($signpath, $reason, (int) $userid);
-if ($signature === null) {
-    $message = $reason === 'denied'
-        ? get_string('servicedenied', 'filter_impronta')
-        : get_string('servicedown', 'filter_impronta');
-    impronta_playlist_fail($reason === 'denied' ? 403 : 503, $message);
-}
-
-$basename = basename($path);
-// El master no siempre se llama como la clase: el backend devuelve el
-// nombre real (videos.master) en la respuesta de /moodle/authorize y la
-// firma lo cachea. Fallback a la convencion "{clase}.m3u8" para firmas
-// antiguas.
-$mastername = !empty($signature['master']) ? $signature['master'] : $basename . '.m3u8';
-$masterkey = "{$signpath}/{$mastername}";
-$key = $rendition !== null ? "{$signpath}/{$rendition}" : $masterkey;
-
-/* --------------------------------------------------------------------- */
-/* Subtitles: {path}/subs/{lang}.vtt, served without rewriting            */
+/* Subtítulos: {path}/subs/{lang}.vtt                                     */
+/*                                                                        */
+/* Siguen viniendo del CDN con una firma de las de antes. No es una        */
+/* contradicción con lo de arriba: esa firma la usa ESTE PHP para          */
+/* descargar el fichero y servirlo él, y no baja nunca al navegador. Su    */
+/* alcance da igual mientras no salga de aquí.                             */
 /* --------------------------------------------------------------------- */
 
 if ($vttlang !== null) {
+    $reason = null;
+    $signature = reelo_api::signature($path, $reason, (int) $userid);
+    if ($signature === null) {
+        $message = $reason === 'denied'
+            ? get_string('servicedenied', 'filter_impronta')
+            : get_string('servicedown', 'filter_impronta');
+        impronta_playlist_fail($reason === 'denied' ? 403 : 503, $message);
+    }
+
     $vtturl = cloudfront::sign_url(
-        $signature['baseurl'] . '/' . cloudfront::encode_key("{$signpath}/subs/{$vttlang}.vtt"),
+        $signature['baseurl'] . '/' . cloudfront::encode_key("{$path}/subs/{$vttlang}.vtt"),
         $signature
     );
     $vttcontent = cloudfront::fetch($vtturl);
@@ -143,62 +131,29 @@ if ($vttlang !== null) {
 
 /* --------------------------------------------------------------------- */
 /* Playlist                                                               */
+/*                                                                        */
+/* Se pide montada al backend y se sirve tal cual. Aquí no se reescribe   */
+/* ni se firma nada: cada línea ya apunta al endpoint que comprueba el     */
+/* bloqueo y firma el segmento en el momento de servirlo.                  */
 /* --------------------------------------------------------------------- */
 
-// Modo cookie: lo pide el reproductor con m=c, y solo se concede si el CDN
-// comparte dominio con este Moodle. No hace falta que el parámetro vaya
-// firmado: forzarlo solo consigue recibir URLs sin firma, que sin las cookies
-// no sirven para nada.
-$cookiemode = optional_param('modo', '', PARAM_ALPHA) === 'cookie'
-    && cloudfront::set_cookies($signature);
-
-// La descarga que hace el servidor sí va siempre firmada: las cookies son del
-// navegador del alumno, aquí no hay ninguna.
-$m3u8url = cloudfront::sign_url($signature['baseurl'] . '/' . cloudfront::encode_key($key), $signature);
-$m3u8content = cloudfront::fetch($m3u8url);
-if ($m3u8content === false) {
-    impronta_playlist_fail(502, 'No se pudo obtener la playlist.');
-}
-
-if ($rendition === null && hls::is_master($m3u8content)) {
-    // Master playlist: point the renditions back at this script.
-    // $ip lo consumía el bloque de validación que ahora vive en
-    // token::authorize(); aquí hace falta para emitir los tokens de
-    // las renditions con la misma atadura a IP que el original.
-    $output = hls::rewrite_master($m3u8content, $path, (int) $courseid,
-        request::ip(), (bool) $audio, (int) $userid, $cookiemode);
-} else {
-    // Media playlist: turn every segment into a signed CloudFront URL.
-    $basedir = trim(dirname($key), '/');
-
-    $resolvesegment = function (string $seg) use ($basedir, $signature, $cookiemode): string {
-        if (strncasecmp($seg, 'http://', 7) === 0 || strncasecmp($seg, 'https://', 8) === 0) {
-            return cloudfront::sign_url(strtok($seg, '?'), $signature, $cookiemode);
-        }
-        $segkey = ($basedir === '' ? $seg : $basedir . '/' . ltrim($seg, '/'));
-        return cloudfront::sign_url($signature['baseurl'] . '/' . cloudfront::encode_key($segkey), $signature, $cookiemode);
-    };
-
-    $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", $m3u8content));
-    $rewritten = [];
-
-    foreach ($lines as $line) {
-        $trim = trim($line);
-
-        if ($trim === '' || $trim[0] === '#') {
-            if (stripos($trim, '#EXT-X-MAP:') === 0 && preg_match('/URI="([^"]*)"/', $trim, $m) && $m[1] !== '') {
-                $line = preg_replace('/URI="[^"]*"/', 'URI="' . $resolvesegment($m[1]) . '"', $line, 1);
-            }
-            $rewritten[] = $line;
-            continue;
-        }
-
-        $rewritten[] = $resolvesegment($trim);
-    }
-
-    $output = implode("\n", $rewritten);
+$reason = null;
+$sesion = reelo_api::playlist($path, $reason, (int) $userid);
+if ($sesion === null) {
+    $message = $reason === 'denied'
+        ? get_string('servicedenied', 'filter_impronta')
+        : get_string('servicedown', 'filter_impronta');
+    impronta_playlist_fail($reason === 'denied' ? 403 : 503, $message);
 }
 
 header('Content-Type: application/vnd.apple.mpegurl; charset=utf-8');
-header('Cache-Control: private, max-age=60');
-echo $output;
+// no-store y no los 60 s de antes: esta playlist lleva un token que identifica
+// a ESTE alumno y a ESTA sesión. Un proxy que la cachee se la estaría sirviendo
+// al siguiente que pase.
+header('Cache-Control: no-store');
+// El identificador de sesión, para que el reproductor pueda latir. Va en una
+// cabecera porque el cuerpo tiene que seguir siendo un .m3u8 y nada más.
+if (!empty($sesion['sessionId'])) {
+    header('X-Impronta-Session: ' . $sesion['sessionId']);
+}
+echo $sesion['playlist'];
