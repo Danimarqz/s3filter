@@ -2,13 +2,24 @@
 /**
  * Impronta filter for Moodle.
  *
- * Replaces [s3:Materia/Clase] (and [s3audio:...]) with a video player with
- * per-user watermark, course-based access control, and analytics. Also
- * accepts the legacy [reelo:...] and [reeloaudio:...] tags for migration.
+ * Replaces [imp:Materia/Clase] (and [impaudio:...]) with a video player with
+ * per-user watermark, course-based access control, and analytics.
  *
  * Options after a pipe:
- *   [s3:Fisica/Tema 3|subs=es,en]
- *   [s3audio:Fisica/Tema 3]
+ *   [imp:Fisica/Tema 3|subs=es,en]
+ *   [impaudio:Fisica/Tema 3]
+ *
+ * # Solo [imp:], a propósito
+ *
+ * No se aceptan los prefijos de los filtros anteriores ([s3:], [s3dev:],
+ * [reelo:]). El proyecto está en alpha y arrastrar cuatro alias del nombre que
+ * tuvo el producto en cada etapa es deuda desde el primer día.
+ *
+ * La consecuencia hay que tenerla presente al activar este filtro: el
+ * contenido que hoy lleva otro prefijo NO se renderiza, se queda el tag escrito
+ * en la página. Los tags viven dentro del contenido de los cursos —secciones,
+ * etiquetas, descripciones de actividad—, así que cambiarlos es un UPDATE sobre
+ * la base de datos de Moodle. Mientras el filtro esté desactivado no pasa nada.
  *
  * The course is read from the filter's render context and signed into the
  * access token — the browser cannot change it.
@@ -22,11 +33,13 @@ defined('MOODLE_INTERNAL') || die();
 
 class text_filter extends \moodle_text_filter {
     public function filter($text, array $options = array()) {
-        if (strpos($text, '[s3') === false && strpos($text, '[reelo') === false) {
+        // Descarte rápido: esto corre sobre CADA texto que Moodle renderiza en
+        // el sitio, así que la ruta que no encuentra nada tiene que ser barata.
+        if (strpos($text, '[imp') === false) {
             return $text;
         }
 
-        static $pattern = '/\[(?:reelo|s3)(audio)?:([^\]]+)\]/';
+        static $pattern = '/\[imp(audio)?:([^\]]+)\]/';
 
         $courseid = access::courseid_from_context($this->context);
 
