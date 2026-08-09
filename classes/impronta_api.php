@@ -544,15 +544,31 @@ class impronta_api {
             . "data-binary=@{$payloadfile}\n"
             . "max-time=5\n"
             . "connect-timeout=3\n"
+            // 'fail' hace que un 401 o un 500 sean un fallo de curl (exit 22) y
+            // no un exito silencioso. Sin esto, curl termina con 0 aunque el
+            // servidor haya rechazado la peticion, que es como 115 lotes se
+            // perdieron sin dejar rastro.
+            . "fail\n"
             . "url={$endpoint}\n";
         @file_put_contents($cfgfile, $cfg);
 
-        // Los dos comandos van agrupados y el '&' aplica al grupo: la shell
-        // hace el fork y pclose() vuelve al instante. El rm va DENTRO para que
-        // los temporales no se acumulen en /tmp -antes no los borraba nadie,
-        // y llevan el apikey dentro-.
+        // Los tres comandos van agrupados y el '&' aplica al grupo: la shell
+        // hace el fork y pclose() vuelve al instante, que es todo el sentido de
+        // este camino -no clavar un worker de PHP-FPM 5 s por cada latido-.
+        //
+        // El 'logger' es lo que hace que este camino deje de ser ciego. Un hijo
+        // desacoplado no puede devolver nada a PHP, asi que si falla la unica
+        // forma de enterarse es que lo escriba el: sin esta linea, un apikey
+        // caducado o un backend caido se ven exactamente igual que todo bien
+        // -estadisticas vacias y ni un log-.
+        //
+        // El rm va DENTRO del grupo y despues del '||' para que los temporales
+        // se borren pase lo que pase: llevan el apikey dentro y se acumulaban
+        // en /tmp porque antes el '&' se aplicaba solo a curl.
         $cmd = '( curl --config ' . escapeshellarg($cfgfile)
-            . ' >/dev/null 2>&1 ; rm -f ' . escapeshellarg($cfgfile) . ' '
+            . ' >/dev/null 2>&1 || logger -t filter_impronta '
+            . escapeshellarg('POST /events fallido (curl no pudo entregar el lote)')
+            . ' ; rm -f ' . escapeshellarg($cfgfile) . ' '
             . escapeshellarg($payloadfile) . ' ) &';
         $p = popen($cmd, 'r');
         if ($p === false) {
