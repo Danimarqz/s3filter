@@ -453,6 +453,25 @@ class impronta_api {
      * @param array $payload {subject, events:[{videoPath,type,positionSeconds,ts}]}
      * @return bool true si el relay salió (no necesariamente si llegó)
      */
+    /**
+     * ¿Hay un curl(1) ejecutable? Se cachea en la peticion: es una llamada a la
+     * shell y post_events se invoca una vez por lote de analitica.
+     *
+     * @return bool
+     */
+    private static function has_curl_cli(): bool {
+        static $tiene = null;
+        if ($tiene !== null) {
+            return $tiene;
+        }
+        $salida = @shell_exec('command -v curl 2>/dev/null');
+        $tiene = is_string($salida) && trim($salida) !== '';
+        if (!$tiene) {
+            error_log('filter_impronta: curl(1) no disponible; la analitica se envia en modo sincrono');
+        }
+        return $tiene;
+    }
+
     public static function post_events(array $payload): bool {
         global $CFG;
 
@@ -468,10 +487,14 @@ class impronta_api {
             return false;
         }
 
-        // Sin popen o en Windows (donde 'cmd &' no es fire-and-forget fiable):
-        // POST sincrono corto. Mejor un evento bloqueante ocasional que perder
-        // la analitica.
-        if (PHP_OS_FAMILY === 'Windows' || !function_exists('popen')) {
+        // Sin popen, sin curl en el PATH o en Windows (donde 'cmd &' no es
+        // fire-and-forget fiable): POST sincrono corto. Mejor un evento
+        // bloqueante ocasional que perder la analitica.
+        //
+        // La comprobacion de curl(1) importa: el camino asincrono no puede
+        // saber si el proceso hijo ha fallado, asi que sin ella un servidor sin
+        // curl instalado descarta TODA la analitica sin una sola linea de log.
+        if (PHP_OS_FAMILY === 'Windows' || !function_exists('popen') || !self::has_curl_cli()) {
             // Ver signature(): la clase curl no se autocarga.
             require_once($CFG->libdir . '/filelib.php');
             $curl = new \curl();
@@ -487,7 +510,14 @@ class impronta_api {
             ]);
             $info = $curl->get_info();
             $httpcode = (int) ($info['http_code'] ?? 0);
-            return $httpcode >= 200 && $httpcode < 300;
+            if ($httpcode < 200 || $httpcode >= 300) {
+                // Se registra el codigo: un 401 (apikey mala) y un 502
+                // (backend caido) se arreglan de formas distintas, y sin esto
+                // los dos se ven igual desde fuera: estadisticas vacias.
+                error_log("filter_impronta: POST /events devolvio HTTP {$httpcode}");
+                return false;
+            }
+            return true;
         }
 
         $payloadfile = tempnam(sys_get_temp_dir(), 'impronta_evt_');
@@ -501,16 +531,29 @@ class impronta_api {
         $cfg = "silent\n"
             . "output=/dev/null\n"
             . "request=POST\n"
-            . "header=Authorization: Bearer {$apikey}\n"
-            . "header=Content-Type: application/json\n"
+            // Las COMILLAS no son decorativas: en un fichero de config, curl
+            // corta el valor en el primer espacio si no va entrecomillado, y
+            // un header sin valor lo descarta entero. Sin ellas la peticion
+            // salia SIN Authorization, el backend respondia 401 y aqui no se
+            // notaba nada -esta rama devuelve true pase lo que pase-. 115
+            // lotes de analitica enviados y ninguno registrado.
+            //
+            // El apikey es hexadecimal, asi que no hay nada que escapar.
+            . "header=\"Authorization: Bearer {$apikey}\"\n"
+            . "header=\"Content-Type: application/json\"\n"
             . "data-binary=@{$payloadfile}\n"
             . "max-time=5\n"
             . "connect-timeout=3\n"
             . "url={$endpoint}\n";
         @file_put_contents($cfgfile, $cfg);
 
-        // '&' al final: la shell hace el fork y pclose() vuelve al instante.
-        $cmd = 'curl --config ' . escapeshellarg($cfgfile) . ' >/dev/null 2>&1 &';
+        // Los dos comandos van agrupados y el '&' aplica al grupo: la shell
+        // hace el fork y pclose() vuelve al instante. El rm va DENTRO para que
+        // los temporales no se acumulen en /tmp -antes no los borraba nadie,
+        // y llevan el apikey dentro-.
+        $cmd = '( curl --config ' . escapeshellarg($cfgfile)
+            . ' >/dev/null 2>&1 ; rm -f ' . escapeshellarg($cfgfile) . ' '
+            . escapeshellarg($payloadfile) . ' ) &';
         $p = popen($cmd, 'r');
         if ($p === false) {
             return false;
