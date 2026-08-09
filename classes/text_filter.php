@@ -9,17 +9,22 @@
  *   [imp:Fisica/Tema 3|subs=es,en]
  *   [impaudio:Fisica/Tema 3]
  *
- * # Solo [imp:], a propósito
+ * # [s3:] también, y por qué
  *
- * No se aceptan los prefijos de los filtros anteriores ([s3:], [s3dev:],
- * [reelo:]). El proyecto está en alpha y arrastrar cuatro alias del nombre que
- * tuvo el producto en cada etapa es deuda desde el primer día.
+ * El prefijo del filtro anterior se acepta como sinónimo exacto de [imp:]
+ * ([s3audio:] igual que [impaudio:]). El payload es el mismo Materia/Clase, así
+ * que solo cambia el nombre.
  *
- * La consecuencia hay que tenerla presente al activar este filtro: el
- * contenido que hoy lleva otro prefijo NO se renderiza, se queda el tag escrito
- * en la página. Los tags viven dentro del contenido de los cursos —secciones,
- * etiquetas, descripciones de actividad—, así que cambiarlos es un UPDATE sobre
- * la base de datos de Moodle. Mientras el filtro esté desactivado no pasa nada.
+ * No es nostalgia: quien escribe estos tags en los cursos es el programa de
+ * ingesta, y emite [s3:]. Renombrar el prefijo obliga a tocar el generador Y a
+ * pasar un UPDATE sobre el contenido de los cursos ya publicados —877 tags en
+ * OpositaTCAE a 2026-08-09—, para no ganar nada que se vea desde fuera.
+ *
+ * Lo que sí hay que tener presente: mientras este filtro acepte [s3:], el
+ * filtro viejo filter_s3video TIENE que estar desactivado. Los dos responden al
+ * mismo prefijo, y el que corra primero se lleva el tag.
+ *
+ * [s3dev:] y [reelo:] no se aceptan: no queda ninguno en ningún sitio.
  *
  * The course is read from the filter's render context and signed into the
  * access token — the browser cannot change it.
@@ -35,11 +40,12 @@ class text_filter extends \moodle_text_filter {
     public function filter($text, array $options = array()) {
         // Descarte rápido: esto corre sobre CADA texto que Moodle renderiza en
         // el sitio, así que la ruta que no encuentra nada tiene que ser barata.
-        if (strpos($text, '[imp') === false) {
+        if (strpos($text, '[imp') === false && strpos($text, '[s3') === false) {
             return $text;
         }
 
-        static $pattern = '/\[imp(audio)?:([^\]]+)\]/';
+        // El prefijo va en grupo sin captura para que 'audio' siga siendo $1.
+        static $pattern = '/\[(?:imp|s3)(audio)?:([^\]]+)\]/';
 
         $courseid = access::courseid_from_context($this->context);
 
