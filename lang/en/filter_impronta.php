@@ -41,3 +41,18 @@ $string['nocoursecontext'] = 'This video is only available inside a course.';
 $string['notenrolled'] = 'You are not enrolled in the course where this video is embedded.';
 $string['servicedenied'] = 'This site is not authorised to access the video service. Contact your site administrator.';
 $string['servicedown'] = 'The video service is temporarily unavailable. Try again in a moment.';
+
+// Who is who: turns an Impronta pseudonym back into a Moodle user.
+$string['whotitle'] = 'Impronta: who is this learner?';
+$string['whointro'] = 'Impronta never sees the names of your learners: it stores an identifier only this Moodle can undo. Paste the identifiers you see in an alert or in the dashboard —one per line, comma-separated, or the whole email pasted in— and we will tell you who they are.';
+$string['wholookup'] = 'Look up';
+$string['whocolid'] = 'Identifier';
+$string['whocoluser'] = 'Learner';
+$string['whocolemail'] = 'Email';
+$string['whounknown'] = 'No match (deleted account, or the signing key changed?)';
+$string['whononefound'] = 'No identifier recognised. They are 24 hexadecimal characters, like 803cc8a9bc6813259f0383d3.';
+$string['whonosecret'] = 'No signing key is configured, so nothing can be resolved. Set it in the plugin settings.';
+
+// Settings info block.
+$string['aboutheading'] = 'About Impronta';
+$string['aboutdesc'] = '<p>This plugin connects your Moodle to <a href="https://impronta.video/" target="_blank" rel="noopener">Impronta</a>: every learner sees the class with their own name and ID on screen, links expire within minutes, and every class request is logged.</p><p><a href="https://impronta.video/moodle" target="_blank" rel="noopener">How the integration works</a> · <a href="https://impronta.video/seguridad" target="_blank" rel="noopener">What it protects, and what it does not</a> · <a href="https://impronta.video/precios" target="_blank" rel="noopener">Pricing</a></p><p><a href="{$a}">Who is this learner?</a> — turns the identifiers in the alerts into real names. The mapping never leaves this server.</p>';

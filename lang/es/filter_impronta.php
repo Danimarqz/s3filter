@@ -41,3 +41,18 @@ $string['nocoursecontext'] = 'Este video solo está disponible dentro de un curs
 $string['notenrolled'] = 'No estás matriculado en el curso donde está incrustado este video.';
 $string['servicedenied'] = 'Este sitio no está autorizado para acceder al servicio de video. Contacta con el administrador del sitio.';
 $string['servicedown'] = 'El servicio de video no está disponible temporalmente. Inténtalo de nuevo en un momento.';
+
+// Quien es quien: traduce el seudonimo de Impronta al alumno de Moodle.
+$string['whotitle'] = 'Impronta: ¿quién es este alumno?';
+$string['whointro'] = 'Impronta no conoce el nombre de tus alumnos: guarda un identificador que solo este Moodle puede deshacer. Pega aquí los identificadores que veas en un aviso o en el panel —uno por línea, separados por comas o el correo entero pegado— y te decimos a quién corresponden.';
+$string['wholookup'] = 'Buscar';
+$string['whocolid'] = 'Identificador';
+$string['whocoluser'] = 'Alumno';
+$string['whocolemail'] = 'Correo';
+$string['whounknown'] = 'Sin correspondencia (¿cuenta eliminada, o clave de firma cambiada?)';
+$string['whononefound'] = 'No se ha reconocido ningún identificador. Son 24 caracteres hexadecimales, como 803cc8a9bc6813259f0383d3.';
+$string['whonosecret'] = 'No hay clave de firma configurada, así que no se puede resolver ningún identificador. Configúrala en los ajustes del plugin.';
+
+// Bloque informativo de los ajustes.
+$string['aboutheading'] = 'Sobre Impronta';
+$string['aboutdesc'] = '<p>Este plugin conecta tu Moodle con <a href="https://impronta.video/" target="_blank" rel="noopener">Impronta</a>: cada alumno ve la clase con su nombre y su DNI en pantalla, los enlaces caducan en minutos y queda registrado quién ha pedido cada clase.</p><p><a href="https://impronta.video/moodle" target="_blank" rel="noopener">Cómo funciona la integración</a> · <a href="https://impronta.video/seguridad" target="_blank" rel="noopener">Qué protege y qué no</a> · <a href="https://impronta.video/precios" target="_blank" rel="noopener">Precios</a></p><p><a href="{$a}">¿Quién es este alumno?</a> — traduce los identificadores de los avisos al nombre real. La correspondencia no sale de este servidor.</p>';

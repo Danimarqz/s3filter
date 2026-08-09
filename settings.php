@@ -24,6 +24,23 @@ use filter_impronta\impronta_api;
 if ($hassiteconfig) {
     $settings = new admin_settingpage('filter_impronta_settings', get_string('settings', 'filter_impronta'));
 
+    // Bloque informativo, lo primero que se ve. Quien abre esta página suele
+    // haber heredado el plugin de otra persona y no sabe qué hay al otro lado;
+    // los enlaces son la respuesta a eso, y el de "quién es este alumno" es la
+    // herramienta que hace falta cuando llega un aviso.
+    //
+    // moodle_url y no una cadena a pelo: el sitio puede estar en un subdirectorio
+    // y un enlace absoluto a /filter/... daría 404 justo ahí.
+    $settings->add(new admin_setting_heading(
+        'filter_impronta/about',
+        get_string('aboutheading', 'filter_impronta'),
+        get_string(
+            'aboutdesc',
+            'filter_impronta',
+            (new moodle_url('/filter/impronta/quien.php'))->out(false)
+        )
+    ));
+
     $settings->add(new admin_setting_heading(
         'filter_impronta/backend',
         get_string('backendheading', 'filter_impronta'),
