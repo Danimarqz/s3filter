@@ -79,7 +79,7 @@
     if (!color || document.getElementById('impronta-app-wm-color')) { return; }
     var style = document.createElement('style');
     style.id = 'impronta-app-wm-color';
-    style.textContent = '.reelo-watermark { color: ' + color + ' !important; }';
+    style.textContent = '.impronta-watermark { color: ' + color + ' !important; }';
     document.head.appendChild(style);
   }
 
@@ -144,7 +144,7 @@
     player.on('ended', function() { push('complete'); });
     timer = setInterval(function() {
       if (!player.paused()) { push('heartbeat'); }
-    }, 15000);
+    }, 30000);
     player.on('dispose', function() {
       if (timer) { clearInterval(timer); }
       flush();
@@ -289,8 +289,8 @@
       return loadScript(CFG.watermarkjs).then(function() {
         return loadScript(CFG.watermarkfitjs);
       }).then(function() {
-        if (typeof ReeloWatermark === 'undefined') { return; }
-        var wm = ReeloWatermark.attach(player, {
+        if (typeof ImprontaWatermark === 'undefined') { return; }
+        var wm = ImprontaWatermark.attach(player, {
           label: cfg.watermark,
           tamperLimit: 3,
           onTamper: function() {}

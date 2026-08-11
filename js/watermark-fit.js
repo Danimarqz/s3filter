@@ -1,6 +1,6 @@
 // Encaja las dos capas del watermark dentro de la IMAGEN del vídeo.
 //
-// El paquete @reelo/watermark las coloca contra la caja del reproductor, que
+// El paquete @impronta/watermark las coloca contra la caja del reproductor, que
 // en pantalla completa es toda la pantalla. La imagen no: un vídeo 16:9 en un
 // móvil 20:9 deja barras negras, y en vertical esas barras son casi toda la
 // pantalla. Las capas caen ahí y no se ven — el WebView de la app de Moodle
@@ -20,7 +20,7 @@
 
   /**
    * @param {object} player instancia de Video.js
-   * @param {object} wm lo que devuelve ReeloWatermark.attach()
+   * @param {object} wm lo que devuelve ImprontaWatermark.attach()
    * @param {function=} avisar telemetría opcional, recibe una cadena
    * @return {{destroy: function}}
    */
@@ -55,7 +55,7 @@
       // Se comparan las cadenas antes de escribir porque el observador de
       // abajo reacciona a los cambios de style: escribir siempre sería un
       // bucle infinito.
-      var fija = el.querySelector('.reelo-watermark-fixed');
+      var fija = el.querySelector('.impronta-watermark-fixed');
       if (fija) {
         var derecha = (g.bx + 6) + 'px';
         var abajo = (g.by + 6) + 'px';
@@ -63,7 +63,7 @@
         if (fija.style.bottom !== abajo) { fija.style.bottom = abajo; }
       }
 
-      var flota = el.querySelector('.reelo-watermark-float');
+      var flota = el.querySelector('.impronta-watermark-float');
       if (flota) {
         var topex = Math.max(g.bx, g.ancho - g.bx - flota.offsetWidth);
         var topey = Math.max(g.by, g.alto - g.by - flota.offsetHeight);
@@ -95,7 +95,7 @@
     // vuelve a usar la caja del reproductor: sin vigilar su style se volvería
     // a ir a la barra negra al primer salto.
     var vigilante = null;
-    var flotante = el.querySelector('.reelo-watermark-float');
+    var flotante = el.querySelector('.impronta-watermark-float');
     if (flotante && global.MutationObserver) {
       vigilante = new global.MutationObserver(function() { colocar(false); });
       vigilante.observe(flotante, {attributes: true, attributeFilter: ['style']});

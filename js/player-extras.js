@@ -184,7 +184,7 @@ window.ImprontaPlayerExtras = function(cfg) {
 
     if (!cfg.watermarkLabel) { return; }
 
-    var wm = ReeloWatermark.attach(player, {
+    var wm = ImprontaWatermark.attach(player, {
       label: cfg.watermarkLabel,
       tamperLimit: 3,
       onTamper: function(count, position) {
