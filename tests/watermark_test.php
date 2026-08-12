@@ -129,6 +129,35 @@ class watermark_test extends \advanced_testcase {
     }
 
     /**
+     * La marca de app es lo que exime a la app de tener sesión de navegador en
+     * playlist.php. O sea que si un token normal pudiera hacerse pasar por uno
+     * de la app, cualquier URL de playlist volvería a valer copiada y sin sesión
+     * durante todo su TTL — y sin que nada falle ni se note.
+     */
+    public function test_marca_de_app_no_se_puede_falsificar(): void {
+        $this->resetAfterTest();
+        set_config('secretkey', 'un-secreto-de-pruebas', 'filter_impronta');
+        set_config('bindip', 0, 'filter_impronta');
+
+        $path = 'Materia/Clase';
+        $expires = time() + 3600;
+        $ip = '203.0.113.7';
+
+        $normal = token::generate($path, $expires, 5, $ip, 42, false);
+        $deapp = token::generate($path, $expires, 5, $ip, 42, true);
+
+        // La marca tiene que cambiar la firma, o no marca nada.
+        $this->assertNotSame($normal, $deapp);
+        // Cada uno vale contra su variante...
+        $this->assertTrue(token::validate($path, $normal, $expires, 5, $ip, 42, false));
+        $this->assertTrue(token::validate($path, $deapp, $expires, 5, $ip, 42, true));
+        // ...y NO cruzados: esto es lo que impide ascender un token normal a "de
+        // la app" y saltarse la exigencia de sesión.
+        $this->assertFalse(token::validate($path, $normal, $expires, 5, $ip, 42, true));
+        $this->assertFalse(token::validate($path, $deapp, $expires, 5, $ip, 42, false));
+    }
+
+    /**
      * Los tokens ya emitidos viven horas: si el despliegue los invalidara,
      * cortaría la reproducción a quien esté viendo una clase en ese momento.
      */

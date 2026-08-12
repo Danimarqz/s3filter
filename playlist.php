@@ -85,12 +85,39 @@ if ($path === '' || strpos($path, '..') !== false) {
 /* --------------------------------------------------------------------- */
 
 if (empty($token) || empty($expires)) {
+    header('X-Impronta-Deny: notoken');
     impronta_playlist_fail(403, get_string('reopenthroughapp', 'filter_impronta'));
 }
 
-$denied = token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid);
+$esapp = false;
+$denied = token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid, $esapp);
 if ($denied !== null) {
+    header('X-Impronta-Deny: token');
     impronta_playlist_fail(403, get_string($denied, 'filter_impronta'));
+}
+
+/* --------------------------------------------------------------------- */
+/* Sesión de navegador, salvo que el token diga que es la app.            */
+/*                                                                       */
+/* Sin esto, el `u` firmado bastaba como identidad y esta URL valía       */
+/* COPIADA en cualquier navegador, sin sesión, durante todo el TTL del    */
+/* token —7 horas por defecto—. Y el `u` se firma SIEMPRE, también en     */
+/* escritorio (ver classes/player.php:102), así que no era un caso raro:  */
+/* era toda URL de playlist que el sitio hubiera emitido.                 */
+/*                                                                       */
+/* La excepción no se detecta, viene acreditada: $esapp sale de la propia */
+/* firma (classes/token.php), y la app es la que nunca va a traer cookie  */
+/* —medido el 2026-08-11: mismo token, 403 en el webview y 200 en el      */
+/* escritorio—.                                                          */
+/*                                                                       */
+/* isloggedin() y no require_login(): esto lo pide un reproductor de      */
+/* vídeo, y una redirección al login le entrega HTML donde espera un      */
+/* .m3u8. El 403 se lee; la redirección desconcierta.                    */
+/* --------------------------------------------------------------------- */
+
+if (!$esapp && (!isloggedin() || isguestuser())) {
+    header('X-Impronta-Deny: nosession');
+    impronta_playlist_fail(403, get_string('reopenthroughapp', 'filter_impronta'));
 }
 
 /* --------------------------------------------------------------------- */
@@ -143,6 +170,10 @@ if ($sesion === null) {
     $message = $reason === 'denied'
         ? get_string('servicedenied', 'filter_impronta')
         : get_string('servicedown', 'filter_impronta');
+    // "backend" y no "denied": este 403 no lo decide este sitio, lo decide
+    // Impronta -y su 401 por el apikey se traduce aquí a 403, que es lo que
+    // hizo pasar por "apikey mala" un fallo que no tenía nada que ver.
+    header('X-Impronta-Deny: backend');
     impronta_playlist_fail($reason === 'denied' ? 403 : 503, $message);
 }
 

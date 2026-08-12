@@ -1,5 +1,9 @@
 <?php
 $string['pluginname'] = 'Impronta';
+// A filter is named by 'filtername', not by 'pluginname': it titles both the
+// manage-filters row and the settings page. Missing, Moodle prints the literal
+// "[filtername,filter_impronta]" instead.
+$string['filtername'] = 'Impronta';
 $string['notsupported'] = 'Your browser does not support the video tag.';
 $string['openvideo'] = 'Open video';
 $string['openvideoinfo'] = 'The video will open in your browser.';
@@ -14,7 +18,6 @@ $string['missingfilename'] = 'The video identifier is missing. Please open this 
 $string['manualenrolrequired'] = 'Your account must have an active manual enrolment to access this video.';
 
 // Settings.
-$string['settings'] = 'Backend and watermark';
 $string['backendheading'] = 'Impronta backend';
 $string['backenddesc'] = 'The plugin is tied to the Impronta deployment at {$a}. This URL is fixed and cannot be changed here.';
 $string['apikey'] = 'Impronta API key';

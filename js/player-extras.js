@@ -184,6 +184,15 @@ window.ImprontaPlayerExtras = function(cfg) {
 
     if (!cfg.watermarkLabel) { return; }
 
+    // El nombre lo fija output.name en el rollup.config.mjs del paquete del
+    // watermark. Estuvo en ReeloWatermark mientras aquí se pedía
+    // ImprontaWatermark, así que esta línea lanzaba un TypeError -"cannot read
+    // properties of undefined"- y el escritorio se quedaba tan sin watermark como
+    // la app, solo con el error enterrado en la consola.
+    if (typeof ImprontaWatermark === 'undefined') {
+      throw new Error('watermark: falta el global ImprontaWatermark');
+    }
+
     var wm = ImprontaWatermark.attach(player, {
       label: cfg.watermarkLabel,
       tamperLimit: 3,

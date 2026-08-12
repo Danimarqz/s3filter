@@ -1,5 +1,9 @@
 <?php
 $string['pluginname'] = 'Impronta';
+// A un filtro lo nombra 'filtername', no 'pluginname': es el título de su fila
+// en Gestionar filtros y de su página de ajustes. Si falta, Moodle escribe
+// literalmente "[filtername,filter_impronta]".
+$string['filtername'] = 'Impronta';
 $string['notsupported'] = 'Tu navegador no soporta la etiqueta de video.';
 $string['openvideo'] = 'Abrir video';
 $string['openvideoinfo'] = 'El video se abrirá en tu navegador.';
@@ -14,7 +18,6 @@ $string['missingfilename'] = 'Falta el identificador del video. Vuelve a abrir e
 $string['manualenrolrequired'] = 'Tu cuenta debe tener una matrícula manual activa para acceder a este vídeo.';
 
 // Settings.
-$string['settings'] = 'Backend y watermark';
 $string['backendheading'] = 'Backend de Impronta';
 $string['backenddesc'] = 'El plugin está vinculado al despliegue de Impronta en {$a}. Esta URL es fija y no se puede cambiar aquí.';
 $string['apikey'] = 'API key de Impronta';

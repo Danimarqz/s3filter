@@ -21,9 +21,12 @@ use filter_impronta\impronta_api;
 // sea, el sitio entero. Comprobado en producción de la peor manera posible el
 // 2026-08-06.
 
+// $settings YA existe y YA se añade al árbol: lo crea y lo cuelga
+// core\plugininfo\filter::load_settings(), que es quien incluye este fichero.
+// Aquí solo se rellena. Cuando esto creaba su propia página y la añadía con
+// $ADMIN->add(), el mismo objeto entraba dos veces y los ajustes salían
+// duplicados en la lista de Filtros.
 if ($hassiteconfig) {
-    $settings = new admin_settingpage('filter_impronta_settings', get_string('settings', 'filter_impronta'));
-
     // Bloque informativo, lo primero que se ve. Quien abre esta página suele
     // haber heredado el plugin de otra persona y no sabe qué hay al otro lado;
     // los enlaces son la respuesta a eso, y el de "quién es este alumno" es la
@@ -120,6 +123,4 @@ if ($hassiteconfig) {
         PARAM_INT,
         10
     ));
-
-    $ADMIN->add('filtersettings', $settings);
 }

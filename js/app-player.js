@@ -289,7 +289,17 @@
       return loadScript(CFG.watermarkjs).then(function() {
         return loadScript(CFG.watermarkfitjs);
       }).then(function() {
-        if (typeof ImprontaWatermark === 'undefined') { return; }
+        if (typeof ImprontaWatermark === 'undefined') {
+          // throw y NO return, que es lo que había. Con el return mudo el vídeo
+          // se reproducía sin watermark y sin que nada lo dijera — así llegó a
+          // producción y así se descubrió: mirando una pantalla. El catch de
+          // abajo ya tiene la política correcta: sin watermark no se reproduce.
+          //
+          // El nombre lo fija rollup.config.mjs del paquete del watermark
+          // (output.name). Estuvo desalineado -el bundle exponía
+          // ReeloWatermark- y ese desajuste es lo que esta rama no delataba.
+          throw new Error('watermark: falta el global ImprontaWatermark');
+        }
         var wm = ImprontaWatermark.attach(player, {
           label: cfg.watermark,
           tamperLimit: 3,

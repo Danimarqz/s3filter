@@ -133,7 +133,12 @@ class player {
             $expires = (int) $options['expires'];
         } else {
             $expires = time() + config::token_ttl();
-            $token = token::generate($filename, $expires, $courseid, request::ip(), $tokenuserid);
+            // $ismobileapp se marca DENTRO de la firma: es lo que permite que
+            // playlist.php exija sesión de navegador sin cortarle el vídeo a la
+            // app, que nunca manda la cookie (comprobado el 2026-08-11: el
+            // webview daba 403 y el escritorio 200 con el mismo token).
+            $token = token::generate($filename, $expires, $courseid, request::ip(), $tokenuserid,
+                $ismobileapp);
         }
 
         // Ya no hay modo cookie, y su desaparición es deliberada.
@@ -185,7 +190,7 @@ class player {
         if (!$assetsprinted) {
             $assetsprinted = true;
             // El color del watermark se aplica por CSS y no como opción de
-            // ReeloWatermark.attach(): el UMD del paquete trae "color:#fff" en el
+            // ImprontaWatermark.attach(): el UMD del paquete trae "color:#fff" en el
             // style inline de cada capa, y una regla de hoja con !important lo
             // gana sin tener que recompilar y redistribuir el paquete. El bucle
             // anti-tampering del UMD reafirma display/visibility/opacity, pero no
@@ -197,7 +202,7 @@ class player {
             $extrasjs = self::asset_url('js/player-extras.js');
             $assets = <<<HTML
 <link href="https://vjs.zencdn.net/{$vjs}/video-js.css" rel="stylesheet" />
-<style>.reelo-watermark { color: {$wmcolor} !important; }</style>
+<style>.impronta-watermark { color: {$wmcolor} !important; }</style>
 <script src="https://vjs.zencdn.net/{$vjs}/video.min.js"></script>
 <script src="{$watermarkjs}"></script>
 <script src="{$fitjs}"></script>
