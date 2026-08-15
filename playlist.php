@@ -48,6 +48,9 @@ $courseid = optional_param('c', 0, PARAM_INT);
 // Usuario firmado dentro del token (camino de la app, sin cookie de sesión).
 // Manipularlo invalida el HMAC, asi que no hace falta confiar en el valor.
 $userid = optional_param('u', 0, PARAM_INT);
+$authorizationgroupid = optional_param('g', '', PARAM_ALPHANUMEXT);
+$playbackid = optional_param('p', '', PARAM_ALPHANUMEXT);
+$mode = optional_param('m', '', PARAM_ALPHA);
 $rawvtt = optional_param('vtt', null, PARAM_ALPHANUMEXT);
 
 /**
@@ -90,7 +93,8 @@ if (empty($token) || empty($expires)) {
 }
 
 $esapp = false;
-$denied = token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid, $esapp);
+$denied = token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid, $esapp,
+    $authorizationgroupid, $playbackid, $mode);
 if ($denied !== null) {
     header('X-Impronta-Deny: token');
     impronta_playlist_fail(403, get_string($denied, 'filter_impronta'));
@@ -115,7 +119,7 @@ if ($denied !== null) {
 /* .m3u8. El 403 se lee; la redirección desconcierta.                    */
 /* --------------------------------------------------------------------- */
 
-if (!$esapp && (!isloggedin() || isguestuser())) {
+if ($mode !== 'scorm' && !$esapp && (!isloggedin() || isguestuser())) {
     header('X-Impronta-Deny: nosession');
     impronta_playlist_fail(403, get_string('reopenthroughapp', 'filter_impronta'));
 }
@@ -165,7 +169,7 @@ if ($vttlang !== null) {
 /* --------------------------------------------------------------------- */
 
 $reason = null;
-$sesion = impronta_api::playlist($path, $reason, (int) $userid);
+$sesion = impronta_api::playlist($path, $reason, (int) $userid, $authorizationgroupid);
 if ($sesion === null) {
     $message = $reason === 'denied'
         ? get_string('servicedenied', 'filter_impronta')
@@ -190,6 +194,6 @@ header('Cache-Control: no-store');
 // conocerlo — que además es lo correcto: así no puede latir por una sesión
 // ajena.
 if (!empty($sesion['sessionId'])) {
-    impronta_api::remember_session($path, (int) $userid, (string) $sesion['sessionId']);
+    impronta_api::remember_session($path, (int) $userid, (string) $sesion['sessionId'], $playbackid);
 }
 echo $sesion['playlist'];

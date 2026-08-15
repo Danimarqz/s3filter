@@ -32,6 +32,9 @@ $expires = optional_param('e', null, PARAM_INT);
 $courseid = optional_param('c', 0, PARAM_INT);
 // Ver playlist.php: identidad firmada en el token, para el camino de la app.
 $userid = optional_param('u', 0, PARAM_INT);
+$authorizationgroupid = optional_param('g', '', PARAM_ALPHANUMEXT);
+$playbackid = optional_param('p', '', PARAM_ALPHANUMEXT);
+$mode = optional_param('m', '', PARAM_ALPHA);
 
 /**
  * Ends the request with a bare status code (no body worth leaking).
@@ -51,7 +54,9 @@ if (empty($token) || empty($expires)) {
     impronta_events_fail(403);
 }
 
-if (token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid) !== null) {
+$unused = false;
+if (token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid, $unused,
+        $authorizationgroupid, $playbackid, $mode) !== null) {
     impronta_events_fail(403);
 }
 
@@ -81,7 +86,7 @@ if (empty($events)) {
 // proporción de reproducciones va por cookies (tenants con dominio propio,
 // seguridad alta) frente a URLs firmadas, y cuánto se consume desde la app
 // frente al navegador.
-$modo = optional_param('modo', '', PARAM_ALPHA) === 'cookie' ? 'cookie' : 'signedurl';
+$modo = $mode === 'scorm' ? 'scorm' : (optional_param('modo', '', PARAM_ALPHA) === 'cookie' ? 'cookie' : 'signedurl');
 
 $origen = $_SERVER['HTTP_ORIGIN'] ?? '';
 $origenhost = $origen !== '' ? (parse_url($origen, PHP_URL_HOST) ?: '') : '';
@@ -115,6 +120,8 @@ foreach ($events as $ev) {
         'ts' => isset($ev['ts']) && is_numeric($ev['ts']) ? (int) $ev['ts'] : (int) (microtime(true) * 1000),
         'mode' => $modo,
         'client' => $cliente,
+        'playbackId' => $playbackid,
+        'authorizationGroupId' => $authorizationgroupid,
     ];
 }
 

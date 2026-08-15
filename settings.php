@@ -12,6 +12,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 use filter_impronta\impronta_api;
+use filter_impronta\config;
 
 // Moodle incluye este fichero al construir el árbol de administración, y lo
 // hace SIN cargar ningún lib.php del plugin. De ahí que todo lo que use este
@@ -62,6 +63,24 @@ if ($hassiteconfig) {
         get_string('secretkey', 'filter_impronta'),
         get_string('secretkeydesc', 'filter_impronta'),
         ''
+    ));
+
+    // This is a POST action rather than a setting value: credentials remain in
+    // Moodle's config store and the browser only submits the one-time sesskey.
+    $registerurl = (new moodle_url('/filter/impronta/register.php'))->out(false);
+    $registrationhtml = '<p>' . get_string('registersitedesc', 'filter_impronta') . '</p>';
+    if (config::get('apikey', '') !== '' && config::get('secretkey', '') !== '') {
+        $registrationhtml .= '<form method="post" action="' . s($registerurl) . '">'
+            . '<input type="hidden" name="sesskey" value="' . s(sesskey()) . '">'
+            . '<button type="submit" class="btn btn-primary">'
+            . s(get_string('registersitebutton', 'filter_impronta')) . '</button></form>';
+    } else {
+        $registrationhtml .= '<p>' . s(get_string('registerneedscredentials', 'filter_impronta')) . '</p>';
+    }
+    $settings->add(new admin_setting_description(
+        'filter_impronta/register',
+        get_string('registersite', 'filter_impronta'),
+        $registrationhtml
     ));
 
     $settings->add(new admin_setting_heading(

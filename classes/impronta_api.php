@@ -224,7 +224,8 @@ class impronta_api {
      * @param int $userid usuario firmado en el token (0 = usar el de la sesión)
      * @return array|null null si falla
      */
-    public static function playlist(string $path, ?string &$reason = null, int $userid = 0): ?array {
+    public static function playlist(string $path, ?string &$reason = null, int $userid = 0,
+            string $authorizationgroupid = ''): ?array {
         global $CFG;
 
         $reason = null;
@@ -255,7 +256,7 @@ class impronta_api {
         // Solo el seudónimo. El nombre y el DNI se quedan aquí: el watermark lo
         // pinta este plugin con los datos de Moodle (ver \filter_impronta\
         // watermark), así que no hay ningún motivo para que salgan del sitio.
-        $response = $curl->post(rtrim(self::URL, '/') . '/player/playlist', json_encode([
+        $payload = [
             'classId' => $path,
             'userId' => $subject,
             // La IP del ALUMNO. Sin esto, Impronta registraría la del servidor
@@ -263,7 +264,11 @@ class impronta_api {
             // no el navegador-, y el administrador vería una IP que parece
             // informar y no informa de nada.
             'ip' => request::ip(),
-        ]), [
+        ];
+        if ($authorizationgroupid !== '') {
+            $payload['authorizationGroupId'] = $authorizationgroupid;
+        }
+        $response = $curl->post(rtrim(self::URL, '/') . '/player/playlist', json_encode($payload), [
             'CURLOPT_TIMEOUT' => 10,
             'CURLOPT_CONNECTTIMEOUT' => 5,
             'CURLOPT_FOLLOWLOCATION' => 0,
@@ -329,9 +334,9 @@ class impronta_api {
      * @param int $userid
      * @return string vacío si no hay alumno identificable
      */
-    private static function session_key(string $path, int $userid): string {
+    private static function session_key(string $path, int $userid, string $playbackid = ''): string {
         $subject = self::subject($userid);
-        return $subject === '' ? '' : sha1($subject . '|' . $path);
+        return $subject === '' ? '' : sha1($subject . '|' . $path . '|' . $playbackid);
     }
 
     /**
@@ -347,8 +352,9 @@ class impronta_api {
      * @param int $userid
      * @param string $sessionid
      */
-    public static function remember_session(string $path, int $userid, string $sessionid): void {
-        $key = self::session_key($path, $userid);
+    public static function remember_session(string $path, int $userid, string $sessionid,
+            string $playbackid = ''): void {
+        $key = self::session_key($path, $userid, $playbackid);
         if ($key === '' || $sessionid === '') {
             return;
         }
@@ -363,8 +369,8 @@ class impronta_api {
      * @param int $userid
      * @return string vacío si no hay ninguno vigente
      */
-    public static function recall_session(string $path, int $userid): string {
-        $key = self::session_key($path, $userid);
+    public static function recall_session(string $path, int $userid, string $playbackid = ''): string {
+        $key = self::session_key($path, $userid, $playbackid);
         if ($key === '') {
             return '';
         }
@@ -395,7 +401,8 @@ class impronta_api {
      * @param int $watched segundos de vídeo consumidos desde el latido anterior
      * @return array|null null si falla
      */
-    public static function heartbeat(string $path, int $userid, string $sessionid, int $watched): ?array {
+    public static function heartbeat(string $path, int $userid, string $sessionid, int $watched,
+            string $authorizationgroupid = ''): ?array {
         global $CFG;
 
         require_once($CFG->libdir . '/filelib.php');
@@ -411,14 +418,18 @@ class impronta_api {
             'Content-Type: application/json',
             'Accept: application/json',
         ]);
-        $response = $curl->post(rtrim(self::URL, '/') . '/player/heartbeat', json_encode([
+        $payload = [
             'classId' => $path,
             'sessionId' => $sessionid,
             // Ver playlist(): la del alumno, no la de este servidor.
             'ip' => request::ip(),
             'watchedSeconds' => $watched,
             'userId' => $subject,
-        ]), [
+        ];
+        if ($authorizationgroupid !== '') {
+            $payload['authorizationGroupId'] = $authorizationgroupid;
+        }
+        $response = $curl->post(rtrim(self::URL, '/') . '/player/heartbeat', json_encode($payload), [
             // Corto a propósito: esto corre cada dos minutos por cada alumno
             // reproduciendo. Un Impronta lento no puede clavar un worker de
             // PHP-FPM por cada uno, que es un DoS autoinfligido.
@@ -436,6 +447,41 @@ class impronta_api {
 
         $decoded = json_decode((string) $response, true);
         return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * Registers this Moodle origin for the tenant.  The API key and secret are
+     * read only on the server; the browser receives neither credential.
+     *
+     * @return bool
+     */
+    public static function register_site(): bool {
+        global $CFG;
+
+        if (config::get('apikey', '') === '' || config::get('secretkey', '') === '') {
+            debugging('filter_impronta: API key and local secret are required before site registration', DEBUG_NORMAL);
+            return false;
+        }
+        require_once($CFG->libdir . '/filelib.php');
+        $origin = rtrim((string) $CFG->wwwroot, '/');
+        $curl = new \curl();
+        $curl->setHeader([
+            'Authorization: Bearer ' . config::required('apikey'),
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ]);
+        $curl->put(rtrim(self::URL, '/') . '/moodle/site', json_encode(['origin' => $origin]), [
+            'CURLOPT_TIMEOUT' => 10,
+            'CURLOPT_CONNECTTIMEOUT' => 5,
+            'CURLOPT_FOLLOWLOCATION' => 0,
+        ]);
+        $info = $curl->get_info();
+        $status = (int) ($info['http_code'] ?? 0);
+        if ($curl->get_errno() || $status < 200 || $status >= 300) {
+            debugging('filter_impronta: Moodle site registration failed (HTTP ' . $status . ')', DEBUG_NORMAL);
+            return false;
+        }
+        return true;
     }
 
     /**

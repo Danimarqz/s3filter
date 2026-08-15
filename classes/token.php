@@ -32,7 +32,8 @@ class token {
      * @throws \coding_exception
      */
     public static function generate(string $filename, int $expires, int $courseid, string $ip,
-            int $userid = 0, bool $esapp = false): string {
+            int $userid = 0, bool $esapp = false, string $authorizationgroupid = '',
+            string $playbackid = '', string $mode = ''): string {
         $secret = config::required('secretkey');
         $payload = "{$filename}|{$expires}|{$courseid}";
 
@@ -81,6 +82,13 @@ class token {
             $payload .= '|app';
         }
 
+        // SCORM grants are deliberately an additional signed variant.  The
+        // group and playback id are opaque values, but signing them prevents a
+        // learner from swapping either one in playlist/heartbeat/events URLs.
+        if ($mode === 'scorm') {
+            $payload .= '|scorm|' . $authorizationgroupid . '|' . $playbackid;
+        }
+
         return hash_hmac('sha256', $payload, $secret);
     }
 
@@ -97,11 +105,13 @@ class token {
      * @return bool
      */
     public static function validate(string $filename, string $token, int $expires, int $courseid,
-            string $ip, int $userid = 0, bool $esapp = false): bool {
+            string $ip, int $userid = 0, bool $esapp = false, string $authorizationgroupid = '',
+            string $playbackid = '', string $mode = ''): bool {
         if (time() > $expires) {
             return false;
         }
-        $expected = self::generate($filename, $expires, $courseid, $ip, $userid, $esapp);
+        $expected = self::generate($filename, $expires, $courseid, $ip, $userid, $esapp,
+            $authorizationgroupid, $playbackid, $mode);
         return hash_equals($expected, $token);
     }
 
@@ -123,12 +133,18 @@ class token {
      * @return string
      */
     public static function endpoint_url(string $script, string $filename, string $token, int $expires,
-            int $courseid, int $userid, array $extra = []): string {
+            int $courseid, int $userid, array $extra = [], string $authorizationgroupid = '',
+            string $playbackid = '', string $mode = ''): string {
         global $CFG;
 
         $params = ['f' => $filename, 't' => $token, 'e' => $expires, 'c' => $courseid];
         if ($userid > 0) {
             $params['u'] = $userid;
+        }
+        if ($mode === 'scorm') {
+            $params['g'] = $authorizationgroupid;
+            $params['p'] = $playbackid;
+            $params['m'] = $mode;
         }
 
         return $CFG->wwwroot . '/filter/impronta/' . $script . '?'
@@ -158,7 +174,8 @@ class token {
      *     cadena de idioma con el motivo
      */
     public static function authorize(string $path, ?string $token, int $expires, int $courseid,
-            int $userid, ?bool &$esapp = null): ?string {
+            int $userid, ?bool &$esapp = null, string $authorizationgroupid = '',
+            string $playbackid = '', string $mode = ''): ?string {
         $ip = request::ip();
         $esapp = false;
 
@@ -169,12 +186,31 @@ class token {
         // Se prueban las dos variantes porque la firma es opaca: no se puede leer
         // la marca, solo recalcular con ella y ver cuál casa. Sin marca primero,
         // que es lo que traen los tokens emitidos antes de esto.
-        if (self::validate($path, $token, $expires, $courseid, $ip, $userid, false)) {
+        if ($mode === 'scorm') {
+            if ($authorizationgroupid === '' || $playbackid === ''
+                    || !self::validate($path, $token, $expires, $courseid, $ip, $userid, false,
+                        $authorizationgroupid, $playbackid, 'scorm')) {
+                return 'tokeninvalid';
+            }
+            $esapp = false;
+        } else if (self::validate($path, $token, $expires, $courseid, $ip, $userid, false)) {
             $esapp = false;
         } else if (self::validate($path, $token, $expires, $courseid, $ip, $userid, true)) {
             $esapp = true;
         } else {
             return 'tokeninvalid';
+        }
+
+        if ($mode === 'scorm') {
+            // SCORM is launched from a Rise package, so it has no Moodle
+            // course context to validate. The current non-guest web session is
+            // mandatory and must be the exact user signed into the launch
+            // token; a copied token must not work in another account's session.
+            global $USER;
+            if (!isloggedin() || isguestuser() || $userid <= 0 || (int) $USER->id !== $userid) {
+                return 'scormsession';
+            }
+            return null;
         }
 
         if ($courseid > 0) {

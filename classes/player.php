@@ -87,6 +87,9 @@ class player {
             'token' => null,
             'expires' => null,
             'userid' => null,
+            'authorizationgroupid' => '',
+            'playbackid' => '',
+            'mode' => '',
             'playbackrates' => [0.5, 0.75, 1, 1.25, 1.5, 2],
             'audio' => false,
             'subtitles' => [],
@@ -94,6 +97,9 @@ class player {
         $options = array_merge($defaults, $options);
         $isaudio = !empty($options['audio']);
         $courseid = (int) $options['courseid'];
+        $authorizationgroupid = (string) $options['authorizationgroupid'];
+        $playbackid = (string) $options['playbackid'];
+        $mode = (string) $options['mode'];
 
         // Identidad de esta reproducción. Se resuelve antes que nada porque la
         // comprobación de matrícula depende de ella: cuando el reproductor lo
@@ -104,10 +110,10 @@ class player {
             $tokenuserid = (isloggedin() && !isguestuser()) ? (int) $USER->id : 0;
         }
 
-        if ($courseid <= 0 && config::require_course()) {
+        if ($mode !== 'scorm' && $courseid <= 0 && config::require_course()) {
             return self::notice('nocoursecontext');
         }
-        if ($courseid > 0 && !access::can_view_course($courseid, $tokenuserid)) {
+        if ($mode !== 'scorm' && $courseid > 0 && !access::can_view_course($courseid, $tokenuserid)) {
             return self::notice('notenrolled');
         }
 
@@ -120,6 +126,9 @@ class player {
 
         $ismobileapp = self::is_mobile_app($options['forceplayer']);
         if ($ismobileapp) {
+            $cacheable = false;
+        }
+        if ($mode === 'scorm') {
             $cacheable = false;
         }
 
@@ -138,7 +147,7 @@ class player {
             // app, que nunca manda la cookie (comprobado el 2026-08-11: el
             // webview daba 403 y el escritorio 200 con el mismo token).
             $token = token::generate($filename, $expires, $courseid, request::ip(), $tokenuserid,
-                $ismobileapp);
+                $ismobileapp, $authorizationgroupid, $playbackid, $mode);
         }
 
         // Ya no hay modo cookie, y su desaparición es deliberada.
@@ -157,7 +166,7 @@ class player {
         $extraparams = $isaudio ? ['a' => 1] : [];
 
         $playlisturl = token::endpoint_url('playlist.php', $filename, $token, $expires, $courseid,
-            $tokenuserid, $extraparams);
+            $tokenuserid, $extraparams, $authorizationgroupid, $playbackid, $mode);
 
         // El beacon de analitica se construye con el mismo token HMAC que la
         // playlist: el apikey del tenant NUNCA sale del servidor (lo usa solo
@@ -167,7 +176,7 @@ class player {
         // analitica, ni recuperacion): a proposito, es un flujo marginal que no
         // merece el JS extra.
         $extrahtml = $isaudio ? '' : self::extras($escapedid, $filename, $token, $expires,
-            $courseid, $playlisturl, $tokenuserid);
+            $courseid, $playlisturl, $tokenuserid, $authorizationgroupid, $playbackid, $mode);
 
         if ($cacheable && isset($rendercache[$cachekey])) {
             return $rendercache[$cachekey] . $extrahtml;
@@ -177,7 +186,7 @@ class player {
         // este enlace en el navegador del móvil: ahí no hay cookie de sesión de
         // Moodle (comprobado por ADB, fase 0.4 del plan de TTL corto).
         $embedurl = token::endpoint_url('embed.php', $filename, $token, $expires, $courseid,
-            $tokenuserid, $isaudio ? ['a' => 1] : []);
+            $tokenuserid, $isaudio ? ['a' => 1] : [], $authorizationgroupid, $playbackid, $mode);
 
         $buttontext = get_string('openvideo', 'filter_impronta');
 
@@ -229,7 +238,8 @@ HTML;
 
         $setupattr = s(json_encode($setupconfig, JSON_UNESCAPED_SLASHES));
         $playlistsrc = s($playlisturl);
-        $trackshtml = self::tracks_html($filename, $options, $token, $expires, $courseid, $isaudio);
+        $trackshtml = self::tracks_html($filename, $options, $token, $expires, $courseid, $isaudio,
+            $authorizationgroupid, $playbackid, $mode, $tokenuserid);
 
         $assetsmarkup = $assets === '' ? '' : $assets . "\n";
         $vjsclass = $isaudio ? '' : ' vjs-fluid';
@@ -342,10 +352,15 @@ HTML;
      * @param int $expires
      * @param int $courseid
      * @param bool $isaudio
+     * @param string $authorizationgroupid
+     * @param string $playbackid
+     * @param string $mode
+     * @param int $userid usuario firmado en el token
      * @return string
      */
     private static function tracks_html(string $filename, array $options, string $token, int $expires,
-            int $courseid, bool $isaudio): string {
+            int $courseid, bool $isaudio, string $authorizationgroupid = '',
+            string $playbackid = '', string $mode = '', int $userid = 0): string {
         global $CFG;
 
         if ($isaudio || empty($options['subtitles']) || !is_array($options['subtitles'])) {
@@ -367,6 +382,14 @@ HTML;
                 'e' => $expires,
                 'c' => $courseid,
             ];
+            if ($userid > 0) {
+                $trackparams['u'] = $userid;
+            }
+            if ($mode === 'scorm') {
+                $trackparams['g'] = $authorizationgroupid;
+                $trackparams['p'] = $playbackid;
+                $trackparams['m'] = $mode;
+            }
             $trackquery = http_build_query($trackparams, '', '&', PHP_QUERY_RFC3986);
             $trackurl = $CFG->wwwroot . '/filter/impronta/playlist.php?' . $trackquery;
             $label = $langnames[$lang] ?? strtoupper($lang);
@@ -394,7 +417,8 @@ HTML;
      * @return string
      */
     private static function extras(string $escapedid, string $filename, string $token, int $expires,
-            int $courseid, string $playlisturl, int $userid = 0): string {
+            int $courseid, string $playlisturl, int $userid = 0, string $authorizationgroupid = '',
+            string $playbackid = '', string $mode = ''): string {
         global $USER;
 
         // El usuario del watermark sale del token cuando no hay sesión (la app
@@ -412,7 +436,7 @@ HTML;
             'targetId' => $escapedid,
             'watermarkLabel' => $watermarkuser ? watermark::label($watermarkuser) : '',
             'eventsUrl' => token::endpoint_url('events.php', $filename, $token, $expires, $courseid,
-                $userid),
+                $userid, [], $authorizationgroupid, $playbackid, $mode),
             'subject' => impronta_api::subject($userid),
             'videoPath' => $filename,
             'playlistUrl' => $playlisturl,
@@ -424,7 +448,7 @@ HTML;
             // denominador de la detección- y trae de vuelta si hay que parar.
             // El intervalo real lo dice Impronta en su respuesta.
             'sessionUrl' => token::endpoint_url('heartbeat.php', $filename, $token, $expires, $courseid,
-                $userid),
+                $userid, [], $authorizationgroupid, $playbackid, $mode),
             'revokedText' => s(get_string('accessrevoked', 'filter_impronta')),
             'evictedText' => s(get_string('sessionevicted', 'filter_impronta')),
         ];

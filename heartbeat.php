@@ -45,6 +45,9 @@ $expires = optional_param('e', null, PARAM_INT);
 $courseid = optional_param('c', 0, PARAM_INT);
 // Ver playlist.php: identidad firmada en el token, para el camino de la app.
 $userid = optional_param('u', 0, PARAM_INT);
+$authorizationgroupid = optional_param('g', '', PARAM_ALPHANUMEXT);
+$playbackid = optional_param('p', '', PARAM_ALPHANUMEXT);
+$mode = optional_param('m', '', PARAM_ALPHA);
 
 /**
  * Termina la petición con un código y sin cuerpo.
@@ -66,11 +69,13 @@ if (empty($token) || empty($expires)) {
     impronta_heartbeat_fail(403);
 }
 
-if (token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid) !== null) {
+$unused = false;
+if (token::authorize($path, $token, (int) $expires, (int) $courseid, (int) $userid, $unused,
+        $authorizationgroupid, $playbackid, $mode) !== null) {
     impronta_heartbeat_fail(403);
 }
 
-$sessionid = impronta_api::recall_session($path, (int) $userid);
+$sessionid = impronta_api::recall_session($path, (int) $userid, $playbackid);
 if ($sessionid === '') {
     // No hay sesión que renovar: o la playlist se pidió hace demasiado, o esta
     // instalación no tiene caché compartida entre peticiones. 409 y no error:
@@ -84,7 +89,7 @@ if (is_array($payload) && isset($payload['watchedSeconds']) && is_numeric($paylo
     $watched = max(0, (int) $payload['watchedSeconds']);
 }
 
-$respuesta = impronta_api::heartbeat($path, (int) $userid, $sessionid, $watched);
+$respuesta = impronta_api::heartbeat($path, (int) $userid, $sessionid, $watched, $authorizationgroupid);
 if ($respuesta === null) {
     // Perder un latido no puede parar la reproducción: el siguiente lo arregla,
     // y si de verdad hay un bloqueo lo corta el propio segmento con un 403.

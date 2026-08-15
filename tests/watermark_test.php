@@ -172,6 +172,37 @@ class watermark_test extends \advanced_testcase {
         $this->assertTrue(token::validate('Materia/Clase', $viejo, $expires, 5, '203.0.113.7'));
     }
 
+    /** SCORM grants bind the group and one playback render into the HMAC. */
+    public function test_token_scorm_atado_a_grupo_y_reproduccion(): void {
+        $this->resetAfterTest();
+        set_config('secretkey', 'un-secreto-de-pruebas', 'filter_impronta');
+        set_config('bindip', 0, 'filter_impronta');
+
+        $expires = time() + 3600;
+        $token = token::generate('Materia/Clase', $expires, 0, '203.0.113.7', 42, false,
+            'grupo-abc', 'playback-123', 'scorm');
+
+        $this->assertTrue(token::validate('Materia/Clase', $token, $expires, 0, '203.0.113.7',
+            42, false, 'grupo-abc', 'playback-123', 'scorm'));
+        $this->assertFalse(token::validate('Materia/Clase', $token, $expires, 0, '203.0.113.7',
+            42, false, 'otro-grupo', 'playback-123', 'scorm'));
+        $this->assertFalse(token::validate('Materia/Clase', $token, $expires, 0, '203.0.113.7',
+            42, false, 'grupo-abc', 'otro-playback', 'scorm'));
+        // A SCORM token is not a normal/app token variant.
+        $this->assertFalse(token::validate('Materia/Clase', $token, $expires, 0, '203.0.113.7', 42));
+    }
+
+    /** Endpoint URLs keep the signed Moodle user for subtitle requests too. */
+    public function test_endpoint_scorm_incluye_usuario_y_grant(): void {
+        $url = token::endpoint_url('playlist.php', 'Materia/Clase', 'token', time() + 60, 0, 42,
+            [], 'grupo-abc', 'playback-123', 'scorm');
+
+        $this->assertStringContainsString('u=42', $url);
+        $this->assertStringContainsString('g=grupo-abc', $url);
+        $this->assertStringContainsString('p=playback-123', $url);
+        $this->assertStringContainsString('m=scorm', $url);
+    }
+
     /**
      * El color se interpola en un <style>: un valor libre podría cerrar la
      * regla e inyectar CSS. Solo hexadecimal; lo demás cae al blanco.

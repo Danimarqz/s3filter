@@ -27,6 +27,9 @@ $audio = optional_param('a', 0, PARAM_INT);
 // Identidad firmada en el token: permite reproducir sin cookie de sesión, que
 // es el caso del navegador que abre la app de Moodle. Ver token::generate.
 $userid = optional_param('u', 0, PARAM_INT);
+$authorizationgroupid = optional_param('g', '', PARAM_ALPHANUMEXT);
+$playbackid = optional_param('p', '', PARAM_ALPHANUMEXT);
+$mode = optional_param('m', '', PARAM_ALPHA);
 
 /**
  * Renders a standalone dark page with one or more messages and stops.
@@ -59,7 +62,9 @@ if (empty($token) || empty($expires)) {
     impronta_embed_fail(403, [s(get_string('reopenthroughapp', 'filter_impronta'))]);
 }
 
-$denied = token::authorize($filename, $token, (int) $expires, (int) $courseid, (int) $userid);
+$unused = false;
+$denied = token::authorize($filename, $token, (int) $expires, (int) $courseid, (int) $userid, $unused,
+    $authorizationgroupid, $playbackid, $mode);
 if ($denied !== null) {
     $messages = [s(get_string($denied, 'filter_impronta'))];
 
@@ -83,6 +88,9 @@ $playeroptions = [
     'token' => $token,
     'expires' => (int) $expires,
     'userid' => (int) $userid,
+    'authorizationgroupid' => $authorizationgroupid,
+    'playbackid' => $playbackid,
+    'mode' => $mode,
 ];
 ?>
 <!DOCTYPE html>
