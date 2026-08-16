@@ -10,10 +10,10 @@ require_capability('moodle/site:config', context_system::instance());
 require_sesskey();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    redirect(new moodle_url('/admin/settings.php', ['section' => 'filter_impronta']));
+    redirect(new moodle_url('/admin/settings.php', ['section' => 'filtersettingimpronta']));
 }
 
 $ok = impronta_api::register_site();
-$url = new moodle_url('/admin/settings.php', ['section' => 'filter_impronta']);
+$url = new moodle_url('/admin/settings.php', ['section' => 'filtersettingimpronta']);
 redirect($url, get_string($ok ? 'registersuccess' : 'registerfailure', 'filter_impronta'),
     $ok ? null : 5, $ok ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_ERROR);

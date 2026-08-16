@@ -70,10 +70,9 @@ if ($hassiteconfig) {
     $registerurl = (new moodle_url('/filter/impronta/register.php'))->out(false);
     $registrationhtml = '<p>' . get_string('registersitedesc', 'filter_impronta') . '</p>';
     if (config::get('apikey', '') !== '' && config::get('secretkey', '') !== '') {
-        $registrationhtml .= '<form method="post" action="' . s($registerurl) . '">'
-            . '<input type="hidden" name="sesskey" value="' . s(sesskey()) . '">'
-            . '<button type="submit" class="btn btn-primary">'
-            . s(get_string('registersitebutton', 'filter_impronta')) . '</button></form>';
+        $registrationhtml .= '<button type="submit" class="btn btn-primary"'
+            . ' formaction="' . s($registerurl) . '" formmethod="post">'
+            . s(get_string('registersitebutton', 'filter_impronta')) . '</button>';
     } else {
         $registrationhtml .= '<p>' . s(get_string('registerneedscredentials', 'filter_impronta')) . '</p>';
     }
