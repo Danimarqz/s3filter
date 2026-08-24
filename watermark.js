@@ -1,2 +1,156 @@
-!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t="undefined"!=typeof globalThis?globalThis:t||self).ImprontaWatermark={})}(this,function(t){"use strict";t.attach=function(t,e){const n={display:"block",visibility:"visible",position:"absolute","pointer-events":"none","z-index":"2147483647",filter:"none",transform:"none",clip:"auto","clip-path":"none"},o=(t,e)=>t+Math.random()*(e-t),i=(t,e,n)=>Math.max(e,Math.min(n,t));if(!t||!t.el_)throw new Error("ImprontaWatermark.attach: first argument must be a Video.js player instance.");if(!e||!e.label)throw new Error("ImprontaWatermark.attach: options.label is required.");const r=e.label,a=e.tamperLimit||3,s=e.onTamper||(()=>{}),l=e.repositionMinMs||2e4,c=e.repositionMaxMs||4e4,p=e.fixedCorner||"br",f=e.fixedOpacity||.12,u=e.floatOpacity||.25,d=t.el_;let m=0,h=0,x=null,y=null,b=null,w=!1;function v(t,e){const n=document.createElement("div");return n.className=`impronta-watermark ${t}`,n.setAttribute("aria-hidden","true"),n.textContent=r,n.style.cssText=`position:absolute;z-index:2147483647;pointer-events:none;color:#fff;font-size:11px;font-family:sans-serif;opacity:${e};text-shadow:0 0 2px #000;white-space:nowrap;user-select:none;`,n}const g=v("impronta-watermark-fixed",f),M={br:{right:"6px",bottom:"6px"},bl:{left:"6px",bottom:"6px"},tr:{right:"6px",top:"6px"},tl:{left:"6px",top:"6px"}}[p]||{right:"6px",bottom:"6px"};Object.assign(g.style,M);const k=v("impronta-watermark-float",u);function C(){b&&b.takeRecords()}function T(){d.contains(g)||d.appendChild(g),d.contains(k)||d.appendChild(k),C()}function N(){const t=d.getBoundingClientRect(),e=Math.max(t.width-220,0),n=Math.max(t.height-40,0);k.style.left=`${i(o(0,e),0,e)}px`,k.style.top=`${i(o(0,n),0,n)}px`,C()}function I(){for(const t of[g,k]){for(const[e,o]of Object.entries(n))t.style.setProperty(e,o,"important");t.style.setProperty("opacity",String(t===g?f:u),"important")}C()}function O(){for(const t of[g,k]){const e=window.getComputedStyle(t);if("none"===e.display||"hidden"===e.visibility||Number(e.opacity)<.05||null===t.offsetParent)return!0}return!1}function j(){if(w)return;m+=1,T(),I();let e=0;try{e=t.currentTime?t.currentTime():0}catch(t){}if(s(m,e),m>=a)try{t.pause()}catch(t){}}function $(){z()}function z(){if(!w){w=!0,b&&(b.disconnect(),b=null),null!==x&&(clearTimeout(x),x=null),null!==y&&(clearInterval(y),y=null),g.parentNode&&g.parentNode.removeChild(g),k.parentNode&&k.parentNode.removeChild(k);try{t.off("dispose",$)}catch(t){}}}return b=new MutationObserver(t=>{if(w)return;let e=!1;for(const n of t)for(const t of n.removedNodes)t!==g&&t!==k||(e=!0);T(),I(),(e||O())&&j()}),b.observe(d,{childList:!0,attributes:!0,attributeFilter:["style","class","hidden"],subtree:!0}),T(),N(),I(),function t(){if(w)return;const e=o(l,c);x=setTimeout(()=>{N(),t()},e)}(),w||(y=setInterval(()=>{w||(document.hidden?h=0:O()?(T(),I(),h+=1,h>=2&&(h=0,j())):h=0)},2e3)),t.on("dispose",$),{destroy:z,reposition:N}}});
-//# sourceMappingURL=reelo-watermark.js.map
+(function(global, factory) {
+  if (typeof exports === 'object' && typeof module !== 'undefined') {
+    factory(exports);
+  } else if (typeof define === 'function' && define.amd) {
+    define(['exports'], factory);
+  } else {
+    global.ImprontaWatermark = {};
+    factory(global.ImprontaWatermark);
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(exports) {
+  'use strict';
+
+  exports.attach = function(player, options) {
+    if (!player || !player.el_) {
+      throw new Error('ImprontaWatermark.attach: first argument must be a Video.js player instance.');
+    }
+    if (!options || !options.label) {
+      throw new Error('ImprontaWatermark.attach: options.label is required.');
+    }
+
+    var enforced = {
+      display: 'block',
+      visibility: 'visible',
+      position: 'absolute',
+      'pointer-events': 'none',
+      'z-index': '2147483647',
+      filter: 'none',
+      transform: 'none',
+      clip: 'auto',
+      'clip-path': 'none'
+    };
+    var label = options.label;
+    var tamperLimit = options.tamperLimit || 3;
+    var onTamper = options.onTamper || function() {};
+    var opacity = options.fixedOpacity || 0.25;
+    var root = player.el_;
+    var tamperCount = 0;
+    var hiddenStreak = 0;
+    var observer = null;
+    var styleTimer = null;
+    var destroyed = false;
+    var insetRight = 24;
+    var insetBottom = 24;
+
+    var mark = document.createElement('div');
+    mark.className = 'impronta-watermark';
+    mark.classList.add('impronta-watermark-fixed');
+    mark.setAttribute('aria-hidden', 'true');
+    mark.textContent = label;
+    mark.style.cssText = 'position:absolute;right:24px;bottom:24px;z-index:2147483647;'
+      + 'pointer-events:none;color:#fff;font-size:11px;font-family:sans-serif;'
+      + 'opacity:' + opacity + ';text-shadow:0 0 2px #000;white-space:nowrap;user-select:none;';
+
+    function discardOwnMutations() {
+      if (observer) { observer.takeRecords(); }
+    }
+
+    function mount() {
+      if (!root.contains(mark)) { root.appendChild(mark); }
+      discardOwnMutations();
+    }
+
+    // watermark-fit.js pasa las barras negras + 24px al rotar o entrar en
+    // fullscreen. Sin argumentos, la base son 24px del reproductor.
+    function reposition(right, bottom) {
+      if (typeof right === 'number' && isFinite(right)) { insetRight = Math.max(0, right); }
+      if (typeof bottom === 'number' && isFinite(bottom)) { insetBottom = Math.max(0, bottom); }
+      mark.style.setProperty('left', 'auto', 'important');
+      mark.style.setProperty('right', insetRight + 'px', 'important');
+      mark.style.setProperty('top', 'auto', 'important');
+      mark.style.setProperty('bottom', insetBottom + 'px', 'important');
+      discardOwnMutations();
+    }
+
+    function enforceStyles() {
+      Object.entries(enforced).forEach(function(entry) {
+        mark.style.setProperty(entry[0], entry[1], 'important');
+      });
+      reposition();
+      mark.style.setProperty('opacity', String(opacity), 'important');
+      discardOwnMutations();
+    }
+
+    function isHidden() {
+      var style = window.getComputedStyle(mark);
+      return style.display === 'none'
+        || style.visibility === 'hidden'
+        || Number(style.opacity) < 0.05
+        || mark.offsetParent === null;
+    }
+
+    function registerTamper() {
+      if (destroyed) { return; }
+      tamperCount += 1;
+      mount();
+      enforceStyles();
+      var position = 0;
+      try { position = player.currentTime ? player.currentTime() : 0; } catch (e) {}
+      onTamper(tamperCount, position);
+      if (tamperCount >= tamperLimit) {
+        try { player.pause(); } catch (e) {}
+      }
+    }
+
+    function destroy() {
+      if (destroyed) { return; }
+      destroyed = true;
+      if (observer) { observer.disconnect(); observer = null; }
+      if (styleTimer !== null) { clearInterval(styleTimer); styleTimer = null; }
+      if (mark.parentNode) { mark.parentNode.removeChild(mark); }
+      try { player.off('dispose', destroy); } catch (e) {}
+    }
+
+    observer = new MutationObserver(function(mutations) {
+      if (destroyed) { return; }
+      var removed = false;
+      mutations.forEach(function(mutation) {
+        mutation.removedNodes.forEach(function(node) {
+          if (node === mark) { removed = true; }
+        });
+      });
+      mount();
+      enforceStyles();
+      if (removed || isHidden()) { registerTamper(); }
+    });
+    observer.observe(root, {
+      childList: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden'],
+      subtree: true
+    });
+
+    mount();
+    reposition();
+    enforceStyles();
+    styleTimer = setInterval(function() {
+      if (destroyed) { return; }
+      if (document.hidden) {
+        hiddenStreak = 0;
+      } else if (isHidden()) {
+        mount();
+        enforceStyles();
+        hiddenStreak += 1;
+        if (hiddenStreak >= 2) {
+          hiddenStreak = 0;
+          registerTamper();
+        }
+      } else {
+        hiddenStreak = 0;
+      }
+    }, 2000);
+    player.on('dispose', destroy);
+
+    return {destroy: destroy, reposition: reposition};
+  };
+});

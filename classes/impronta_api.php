@@ -226,7 +226,7 @@ class impronta_api {
      */
     public static function playlist(string $path, ?string &$reason = null, int $userid = 0,
             string $authorizationgroupid = ''): ?array {
-        global $CFG;
+        global $CFG, $USER;
 
         $reason = null;
 
@@ -253,9 +253,15 @@ class impronta_api {
             'Content-Type: application/json',
             'Accept: application/json',
         ]);
-        // Solo el seudónimo. El nombre y el DNI se quedan aquí: el watermark lo
-        // pinta este plugin con los datos de Moodle (ver \filter_impronta\
-        // watermark), así que no hay ningún motivo para que salgan del sitio.
+        // El backend necesita la etiqueta exacta para los segmentos quemados.
+        // Se resuelve aquí, server-to-server: nunca viaja en la URL ni se deja
+        // a JavaScript decidirla.
+        $watermarkuser = null;
+        if ($userid > 0) {
+            $watermarkuser = \core_user::get_user($userid);
+        } else if (isloggedin() && !isguestuser()) {
+            $watermarkuser = $USER;
+        }
         $payload = [
             'classId' => $path,
             'userId' => $subject,
@@ -265,6 +271,9 @@ class impronta_api {
             // informar y no informa de nada.
             'ip' => request::ip(),
         ];
+        if ($watermarkuser && !empty($watermarkuser->id)) {
+            $payload['watermarkLabel'] = watermark::label($watermarkuser);
+        }
         if ($authorizationgroupid !== '') {
             $payload['authorizationGroupId'] = $authorizationgroupid;
         }

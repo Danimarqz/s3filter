@@ -200,7 +200,7 @@ class player {
             $assetsprinted = true;
             // El color del watermark se aplica por CSS y no como opción de
             // ImprontaWatermark.attach(): el UMD del paquete trae "color:#fff" en el
-            // style inline de cada capa, y una regla de hoja con !important lo
+            // style inline de la marca, y una regla de hoja con !important lo
             // gana sin tener que recompilar y redistribuir el paquete. El bucle
             // anti-tampering del UMD reafirma display/visibility/opacity, pero no
             // toca color, así que no hay pelea entre los dos.
