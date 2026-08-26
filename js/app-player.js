@@ -213,7 +213,12 @@
       }).catch(function() {});
     }
 
-    timer = setInterval(latir, 120000);
+    // En el primer play y no al montar, por lo mismo que en player-extras.js: sin
+    // sesión que renovar heartbeat.php contesta 409, y latir por vídeos que nadie
+    // ha abierto son peticiones que no pueden salir bien. Aquí importa menos que
+    // en el navegador porque la app suele traer un vídeo por vista, pero el
+    // marcador se monta por elemento y nada impide que haya varios.
+    player.one('play', function() { timer = setInterval(latir, 120000); });
     player.on('error', function() { latir(); });
     player.on('dispose', function() { if (timer) { clearInterval(timer); } });
   }

@@ -118,9 +118,21 @@ window.ImprontaPlayerExtras = function(cfg) {
     }
 
     if (cfg.sessionUrl) {
-      // 120 s de partida; el servidor manda el suyo en cada respuesta, pero
-      // hace falta uno para el primero.
-      latidoTimer = setInterval(latir, 120000);
+      // El intervalo arranca en el PRIMER PLAY, no al montar el reproductor.
+      // Antes latía todo lo embebido en la página: una página de curso lleva una
+      // docena de vídeos, así que a los 120 s salían doce peticiones juntas y las
+      // de los que nadie había abierto contestaban 409 —que heartbeat.php
+      // devuelve a propósito cuando no hay sesión que renovar, ver su línea 83—,
+      // llenando la consola de rojo por algo que funcionaba bien.
+      //
+      // Con preload="none" arregla además una carrera: la sesión no existe hasta
+      // que se pide la playlist, y eso tampoco pasa hasta que se pulsa play.
+      //
+      // 120 s de partida; el servidor manda el suyo en cada respuesta, pero hace
+      // falta uno para el primero.
+      player.one('play', function() {
+        latidoTimer = setInterval(latir, 120000);
+      });
     }
 
     player.on('dispose', function() {
