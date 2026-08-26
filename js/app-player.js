@@ -253,7 +253,7 @@
       video.className = 'video-js vjs-default-skin vjs-fluid';
       video.setAttribute('controls', '');
       video.setAttribute('playsinline', '');
-      video.setAttribute('preload', 'auto');
+      video.setAttribute('preload', 'none');
 
       // Se vacía el marcador (con él, el botón de respaldo) solo cuando
       // video.js ya está cargado: si la carga falla, el alumno se queda con

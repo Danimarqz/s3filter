@@ -248,7 +248,7 @@ HTML;
 
         $html = <<<HTML
 {$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}
-       controls preload="auto" disablepictureinpicture playsinline data-setup='{$setupattr}'>
+       controls preload="none" disablepictureinpicture playsinline data-setup='{$setupattr}'>
   <source src="{$playlistsrc}" type="application/x-mpegURL">
 {$trackshtml}</video>
 <script>
