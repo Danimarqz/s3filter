@@ -182,17 +182,17 @@ class player {
             return $rendercache[$cachekey] . $extrahtml;
         }
 
+        // Solo la rama de la app: en el navegador el reproductor va inline y no
+        // hay nada que abrir aparte.
+        //
         // El `u` que mete token::endpoint_url es lo que evita el 403 al abrir
         // este enlace en el navegador del móvil: ahí no hay cookie de sesión de
         // Moodle (comprobado por ADB, fase 0.4 del plan de TTL corto).
-        $embedurl = token::endpoint_url('embed.php', $filename, $token, $expires, $courseid,
-            $tokenuserid, $isaudio ? ['a' => 1] : [], $authorizationgroupid, $playbackid, $mode);
-
-        $buttontext = get_string('openvideo', 'filter_impronta');
-
         if ($ismobileapp) {
+            $embedurl = token::endpoint_url('embed.php', $filename, $token, $expires, $courseid,
+                $tokenuserid, $isaudio ? ['a' => 1] : [], $authorizationgroupid, $playbackid, $mode);
             return self::app_marker($filename, $playlisturl, $embedurl, $token, $expires,
-                $courseid, $tokenuserid, $isaudio, $buttontext);
+                $courseid, $tokenuserid, $isaudio);
         }
 
         $assets = '';
@@ -244,7 +244,6 @@ HTML;
         $assetsmarkup = $assets === '' ? '' : $assets . "\n";
         $vjsclass = $isaudio ? '' : ' vjs-fluid';
         $vjsstyle = $isaudio ? ' style="width:100%;height:3em"' : '';
-        $embedhref = s($embedurl);
 
         $html = <<<HTML
 {$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}
@@ -258,14 +257,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
-<div style="text-align:center; padding:1em;">
-  <a href="{$embedhref}" target="_blank"
-     style="display:inline-block; background:#1976d2; color:#fff;
-            padding:0.8em 1.2em; border-radius:6px;
-            font-weight:600; text-decoration:none;">
-    {$buttontext}
-  </a>
-</div>
 HTML;
 
         if ($cacheable && $assets === '') {
@@ -286,7 +277,11 @@ HTML;
      * Dentro va el botón de abrir en el navegador como respaldo: si
      * js/app-player.js no llega a ejecutarse (app antigua, JS bloqueado, fallo
      * al cargar video.js), el alumno ve exactamente lo que veía antes en vez de
-     * un hueco vacío. El reproductor lo borra al montarse.
+     * un hueco vacío. El reproductor lo borra al montarse (textContent = '').
+     *
+     * Este es el ÚNICO sitio donde queda el botón: en el navegador se retiró
+     * porque allí el reproductor va inline y no hay respaldo que ofrecer. Aquí
+     * sigue siendo la única salida cuando el JS no arranca.
      *
      * @param string $filename
      * @param string $playlisturl
@@ -296,14 +291,14 @@ HTML;
      * @param int $courseid
      * @param int $tokenuserid
      * @param bool $isaudio
-     * @param string $buttontext
      * @return string
      */
     private static function app_marker(string $filename, string $playlisturl, string $embedurl,
-            string $token, int $expires, int $courseid, int $tokenuserid, bool $isaudio,
-            string $buttontext): string {
+            string $token, int $expires, int $courseid, int $tokenuserid,
+            bool $isaudio): string {
         global $USER;
 
+        $buttontext = get_string('openvideo', 'filter_impronta');
         $infotext = get_string('openvideoinfo', 'filter_impronta');
         $embedhref = s($embedurl);
 
