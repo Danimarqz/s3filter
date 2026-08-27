@@ -56,7 +56,7 @@ window.ImprontaPlayerExtras = function(cfg) {
     }
 
     player.on('play', function() { push('play', player.currentTime() || 0); });
-    player.on('pause', function() { push('pause', player.currentTime() || 0); });
+    player.on('pause', function() { push('pause', player.currentTime() || 0); flush(); });
     player.on('seeked', function() { push('seek', player.currentTime() || 0); });
     player.on('ended', function() { push('complete', player.currentTime() || 0); flush(); });
 
@@ -76,6 +76,13 @@ window.ImprontaPlayerExtras = function(cfg) {
     var ultimoTiempo = player.currentTime() || 0;
     var sesionTerminada = false;
     var latidoTimer = null;
+    var sesionIniciada = false;
+    var sesionReproduciendo = false;
+    var latidoEnVuelo = false;
+    var flushPendiente = false;
+    var disposePendiente = false;
+    var primerLatidoPendiente = true;
+    var siguienteLatido = 120000;
 
     // Los segundos se acumulan de los avances pequeños de currentTime y no del
     // reloj: así una pausa no cuenta, un rebobinado no resta, y ver a 2x cuenta
@@ -91,55 +98,109 @@ window.ImprontaPlayerExtras = function(cfg) {
 
     function parar(texto) {
       sesionTerminada = true;
-      if (latidoTimer) { clearInterval(latidoTimer); latidoTimer = null; }
+      if (latidoTimer) { clearTimeout(latidoTimer); latidoTimer = null; }
       try { player.pause(); } catch (e) {}
       aviso(texto);
     }
 
-    function latir() {
-      if (!cfg.sessionUrl || sesionTerminada) { return; }
+    function programarLatido(despues) {
+      if (!sesionReproduciendo || sesionTerminada || latidoTimer) { return; }
+      latidoTimer = setTimeout(function() {
+        latidoTimer = null;
+        primerLatidoPendiente = false;
+        latir(true);
+      }, despues);
+    }
+
+    function latir(forzado, permitirDispose) {
+      if (!cfg.sessionUrl || (sesionTerminada && !permitirDispose) || !sesionIniciada) { return; }
+      if (latidoEnVuelo) { flushPendiente = true; return; }
       var enviados = Math.round(vistos);
-      fetch(cfg.sessionUrl, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({watchedSeconds: enviados})
+      if (!forzado && enviados <= 0) { return; }
+      latidoEnVuelo = true;
+      Promise.resolve().then(function() {
+        return fetch(cfg.sessionUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({watchedSeconds: enviados}),
+          keepalive: true
+        });
       }).then(function(res) {
-        if (!res.ok) { return null; }
+        if (!res || !res.ok) { throw new Error('heartbeat failed'); }
+        return typeof res.json === 'function' ? res.json() : {};
+      }).then(function(r) {
+        r = r || {};
         // Los segundos solo se descuentan si el latido llegó. Perderlos
         // inflaría la proporción de segmentos servidos por minuto visto y
         // acercaría una alerta a un alumno que no ha hecho nada raro.
-        vistos -= enviados;
-        return res.json();
-      }).then(function(r) {
-        if (!r) { return; }
+        vistos = Math.max(0, vistos - enviados);
+        latidoEnVuelo = false;
         if (r.blocked) { parar(cfg.revokedText); }
         else if (r.evicted) { parar(cfg.evictedText); }
-      }).catch(function() {});
+        siguienteLatido = Number(r.heartbeatSeconds) > 0 ? Number(r.heartbeatSeconds) * 1000 : 120000;
+        if (flushPendiente) {
+          flushPendiente = false;
+          var permitirDispose = disposePendiente;
+          disposePendiente = false;
+          if (Math.round(vistos) > 0) { latir(false, permitirDispose); }
+          else { programarLatido(siguienteLatido); }
+        } else {
+          programarLatido(siguienteLatido);
+        }
+      }).catch(function() {
+        latidoEnVuelo = false;
+        if (flushPendiente) {
+          flushPendiente = false;
+          var permitirDispose = disposePendiente;
+          disposePendiente = false;
+          if (Math.round(vistos) > 0) { latir(false, permitirDispose); }
+          else { programarLatido(120000); }
+        } else {
+          programarLatido(120000);
+        }
+      });
     }
 
-    if (cfg.sessionUrl) {
-      // El intervalo arranca en el PRIMER PLAY, no al montar el reproductor.
-      // Antes latía todo lo embebido en la página: una página de curso lleva una
-      // docena de vídeos, así que a los 120 s salían doce peticiones juntas y las
-      // de los que nadie había abierto contestaban 409 —que heartbeat.php
-      // devuelve a propósito cuando no hay sesión que renovar, ver su línea 83—,
-      // llenando la consola de rojo por algo que funcionaba bien.
-      //
-      // Con preload="none" arregla además una carrera: la sesión no existe hasta
-      // que se pide la playlist, y eso tampoco pasa hasta que se pulsa play.
-      //
-      // 120 s de partida; el servidor manda el suyo en cada respuesta, pero hace
-      // falta uno para el primero.
-      player.one('play', function() {
-        latidoTimer = setInterval(latir, 120000);
-      });
+    player.on('play', function() {
+      if (!cfg.sessionUrl || sesionTerminada) { return; }
+      sesionIniciada = true;
+      sesionReproduciendo = true;
+      programarLatido(primerLatidoPendiente ? 30000 : siguienteLatido);
+    });
+    player.on('pause', function() {
+      sesionReproduciendo = false;
+      if (latidoTimer) { clearTimeout(latidoTimer); latidoTimer = null; }
+      latir(false);
+    });
+    player.on('ended', function() {
+      sesionReproduciendo = false;
+      if (latidoTimer) { clearTimeout(latidoTimer); latidoTimer = null; }
+      latir(false);
+    });
+    function flushSesion() {
+      latir(false);
     }
 
     player.on('dispose', function() {
       clearInterval(heartbeat);
-      if (latidoTimer) { clearInterval(latidoTimer); }
+      sesionReproduciendo = false;
+      if (latidoTimer) { clearTimeout(latidoTimer); latidoTimer = null; }
+      var habiaLatidoEnVuelo = latidoEnVuelo;
+      disposePendiente = true;
+      flushSesion();
+      sesionTerminada = true;
+      if (!habiaLatidoEnVuelo) { disposePendiente = false; }
       flush();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     });
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        flush();
+        flushSesion();
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // --- Recuperacion ante 403 ------------------------------------------
     // Un 403 en un segmento ya no significa solo "la firma caduco": ahora
@@ -173,7 +234,7 @@ window.ImprontaPlayerExtras = function(cfg) {
       // Pregunta al servidor por el motivo real. Si es un bloqueo, latir()
       // para el reproductor y pone el mensaje que toca; el reintento de abajo
       // no llega a servir de nada porque la playlist nueva daria 403 igual.
-      latir();
+      latir(true);
 
       if (recovered) {
         aviso(cfg.expiredText);

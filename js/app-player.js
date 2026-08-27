@@ -102,6 +102,14 @@
       '.video-js .vjs-big-play-button {',
       '  top: calc(50% + env(safe-area-inset-top, 0) / 2);',
       '  left: calc(50% + (env(safe-area-inset-right, 0) - env(safe-area-inset-left, 0)) / 2);',
+      '}',
+      '.filter_impronta-app-player .video-js, .filter_impronta-app-player .vjs-poster {',
+      '  background-color: #f3f4f6;',
+      '}',
+      '.filter_impronta-app-player .vjs-poster {',
+      '  background-position: center;',
+      '  background-repeat: no-repeat;',
+      '  background-size: contain;',
       '}'
     ].join('\n');
     document.head.appendChild(style);
@@ -167,11 +175,30 @@
     var vistos = 0;
     var ultimo = 0;
     var terminada = false;
+    var iniciada = false;
+    var latidoEnVuelo = false;
+    var flushPendiente = false;
+    var destruida = false;
     var timer = null;
+    var intervalo = 30;
+
+    function limpiarTimer() {
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    function programar(segundos) {
+      limpiarTimer();
+      if (terminada || !iniciada || player.paused()) { return; }
+      timer = setTimeout(function() {
+        timer = null;
+        latir(false);
+      }, segundos * 1000);
+    }
 
     // De los avances pequeños de currentTime y no del reloj: una pausa no
     // cuenta, un rebobinado no resta, y ver a 2x cuenta el doble.
     player.on('timeupdate', function() {
+      if (!iniciada) { return; }
       var t = 0;
       try { t = player.currentTime() || 0; } catch (e) { return; }
       var delta = t - ultimo;
@@ -181,7 +208,7 @@
 
     function parar(texto) {
       terminada = true;
-      if (timer) { clearInterval(timer); timer = null; }
+      limpiarTimer();
       try { player.pause(); } catch (e) {}
       diag('sesion:parada');
       if (!texto) { return; }
@@ -192,25 +219,45 @@
       el.appendChild(msg);
     }
 
-    function latir() {
-      if (terminada) { return; }
+    function latir(forzar) {
+      if ((terminada && !(forzar && destruida && flushPendiente)) || !iniciada || latidoEnVuelo || (!forzar && player.paused())) { return; }
       var enviados = Math.round(vistos);
+      flushPendiente = false;
+      latidoEnVuelo = true;
       fetch(cfg.session, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({watchedSeconds: enviados})
+        body: JSON.stringify({watchedSeconds: enviados}),
+        keepalive: true
       }).then(function(res) {
-        if (!res.ok) { return null; }
+        if (!res.ok) { throw new Error('heartbeat ' + res.status); }
         // Solo se descuentan si el latido llegó: perderlos inflaría la
         // proporción de segmentos por minuto visto y acercaría una alerta a un
         // alumno que no ha hecho nada raro.
         vistos -= enviados;
         return res.json();
       }).then(function(r) {
-        if (!r) { return; }
+        var recibido = Number(r && r.heartbeatSeconds);
+        intervalo = recibido > 0 ? recibido : 120;
         if (r.blocked) { parar(cfg.revoked); }
         else if (r.evicted) { parar(cfg.evicted); }
-      }).catch(function() {});
+      }).catch(function() {
+        // Los segundos quedan pendientes para el siguiente latido.
+        intervalo = 120;
+      }).then(function() {
+        latidoEnVuelo = false;
+        if (flushPendiente) {
+          latir(true);
+        } else if (!destruida && !terminada && iniciada && !player.paused()) {
+          programar(intervalo);
+        }
+      });
+    }
+
+    function flush() {
+      if (terminada || !iniciada) { return; }
+      flushPendiente = true;
+      if (!latidoEnVuelo) { latir(true); }
     }
 
     // En el primer play y no al montar, por lo mismo que en player-extras.js: sin
@@ -218,9 +265,35 @@
     // ha abierto son peticiones que no pueden salir bien. Aquí importa menos que
     // en el navegador porque la app suele traer un vídeo por vista, pero el
     // marcador se monta por elemento y nada impide que haya varios.
-    player.one('play', function() { timer = setInterval(latir, 120000); });
-    player.on('error', function() { latir(); });
-    player.on('dispose', function() { if (timer) { clearInterval(timer); } });
+    // El primer latido espera 30 s desde el primer play; los siguientes usan
+    // heartbeatSeconds del servidor y 120 s si falla o no lo devuelve.
+    player.on('play', function() {
+      if (terminada) { return; }
+      iniciada = true;
+      if (!timer && !latidoEnVuelo) { programar(intervalo); }
+    });
+    player.on('pause', function() {
+      limpiarTimer();
+      flush();
+    });
+    player.on('ended', function() {
+      limpiarTimer();
+      flush();
+    });
+    player.on('error', function() { flush(); });
+
+    function alOcultarse() {
+      if (document.visibilityState === 'hidden') { flush(); }
+    }
+    document.addEventListener('visibilitychange', alOcultarse);
+
+    player.on('dispose', function() {
+      limpiarTimer();
+      destruida = true;
+      flush();
+      terminada = true;
+      document.removeEventListener('visibilitychange', alOcultarse);
+    });
   }
 
   // El servidor ya filtró y el marcador trae los datos firmados: no hay nada
@@ -229,6 +302,7 @@
   function montar(el) {
     var cfg = {
       playlist: el.getAttribute('data-impronta-playlist'),
+      poster: el.getAttribute('data-impronta-poster'),
       events: el.getAttribute('data-impronta-events'),
       subject: el.getAttribute('data-impronta-subject'),
       path: el.getAttribute('data-impronta-path'),
@@ -269,6 +343,7 @@
       var player = videojs(video, {
         fluid: true,
         playsinline: true,
+        poster: cfg.poster || undefined,
         sources: [{src: cfg.playlist, type: 'application/x-mpegURL'}]
       });
 

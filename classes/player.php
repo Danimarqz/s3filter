@@ -211,7 +211,16 @@ class player {
             $extrasjs = self::asset_url('js/player-extras.js');
             $assets = <<<HTML
 <link href="https://vjs.zencdn.net/{$vjs}/video-js.css" rel="stylesheet" />
-<style>.impronta-watermark { color: {$wmcolor} !important; }</style>
+<style>
+.impronta-watermark { color: {$wmcolor} !important; }
+.filter-impronta-player.video-js { background-color:#f3f4f6; }
+.filter-impronta-player .vjs-poster {
+  background-color:#f3f4f6;
+  background-position:center;
+  background-repeat:no-repeat;
+  background-size:contain;
+}
+</style>
 <script src="https://vjs.zencdn.net/{$vjs}/video.min.js"></script>
 <script src="{$watermarkjs}"></script>
 <script src="{$fitjs}"></script>
@@ -242,11 +251,13 @@ HTML;
             $authorizationgroupid, $playbackid, $mode, $tokenuserid);
 
         $assetsmarkup = $assets === '' ? '' : $assets . "\n";
-        $vjsclass = $isaudio ? '' : ' vjs-fluid';
+        $vjsclass = $isaudio ? '' : ' vjs-fluid filter-impronta-player';
         $vjsstyle = $isaudio ? ' style="width:100%;height:3em"' : '';
+        $poster = $isaudio ? '' : self::poster_url();
+        $posterattr = $poster === '' ? '' : ' poster="' . s($poster) . '"';
 
         $html = <<<HTML
-{$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}
+{$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}{$posterattr}
        controls preload="none" disablepictureinpicture playsinline data-setup='{$setupattr}'>
   <source src="{$playlistsrc}" type="application/x-mpegURL">
 {$trackshtml}</video>
@@ -311,6 +322,7 @@ HTML;
                 $expires, $courseid, $tokenuserid),
             'subject' => impronta_api::subject($tokenuserid),
             'path' => $filename,
+            'poster' => $isaudio ? '' : self::poster_url(),
             'watermark' => $tokenuserid > 0 ? watermark::label($USER) : '',
             'color' => watermark::color(),
             // El latido de la sesión. Los embeds de solo audio quedan fuera,
@@ -336,6 +348,18 @@ HTML;
   <p style="font-size:0.9em;color:#666;margin-top:0.5em;">{$infotext}</p>
 </div>
 HTML;
+    }
+
+    /**
+     * URL del logo configurado en el sitio, para usarlo como poster de vídeo.
+     *
+     * @return string vacío si el sitio no tiene logo
+     */
+    private static function poster_url(): string {
+        global $OUTPUT;
+
+        $logo = $OUTPUT->get_logo_url(600, 120);
+        return $logo ? $logo->out(false) : '';
     }
 
     /**
