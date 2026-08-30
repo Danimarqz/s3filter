@@ -40,15 +40,16 @@ class mobile {
         // mundo. Pasó el 2026-08-06 en producción.
         //
         // Como la llamada del web service va autenticada, se puede limitar por
-        // usuario: solo los ids de 'mobileusers' reciben el JavaScript del
-        // reproductor; el resto recibe cadena vacía y la app se comporta como
-        // si el plugin no tuviera addon. Vacío (por defecto) = nadie, que es
-        // lo que debe pasar mientras esto no esté validado en un dispositivo.
+        // usuario: si 'mobileusers' trae ids, solo esos reciben el JavaScript
+        // del reproductor y el resto recibe cadena vacía (la app se comporta
+        // como si el plugin no tuviera addon). Vacío = todo el mundo, que es
+        // el valor normal; la lista solo sirve para volver a acotarlo mientras
+        // se prueba algo.
         $permitidos = array_filter(array_map(
             'intval',
             explode(',', (string) config::get('mobileusers', ''))
         ));
-        if (!$permitidos || !in_array((int) $USER->id, $permitidos, true)) {
+        if ($permitidos && !in_array((int) $USER->id, $permitidos, true)) {
             return ['javascript' => ''];
         }
 
