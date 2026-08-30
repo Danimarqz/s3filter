@@ -29,6 +29,7 @@ $string['registersitedesc'] = 'After saving the API key and secret, register thi
 $string['registersitebutton'] = 'Register Moodle site';
 $string['registerneedscredentials'] = 'Save both the API key and local signing secret above to enable registration.';
 $string['registersuccess'] = 'This Moodle site is now registered with Impronta.';
+$string['registermediabase'] = 'Tenant media: {$a} (saved automatically when registering the site; re-register if the tenant changes CDN)';
 $string['registerfailure'] = 'The Moodle site could not be registered. Check the API key and connectivity.';
 $string['scormguest'] = 'Guest users cannot play shared videos. Please log in to Moodle.';
 $string['scormsession'] = 'This shared video link belongs to a different Moodle session. Open it again from your account.';
@@ -41,10 +42,6 @@ $string['mobileusers'] = 'In-app player (user ids)';
 $string['mobileusersdesc'] = 'Comma-separated user ids that receive the player inside the Moodle app. <strong>Empty = everyone</strong>, which is the normal value; with ids, only those users.<br />Note: the mobile addon is served to every app connected to this site, so a fault here does not only affect whoever opens a video — it can leave the app unable to load any course for everyone. That is why this list exists: to narrow a change down to a few users without exposing learners.';
 $string['watermarkcolor'] = 'Watermark colour';
 $string['watermarkcolordesc'] = 'Colour of the overlay text. The white default reads best over most video: the closer the colour is to the footage, the less legible the watermark is if you ever need it as evidence.';
-$string['mediaheading'] = 'Tenant media';
-$string['mediadesc'] = 'The video comes from the tenant\'s CloudFront distribution, which is not this Moodle\'s domain. Setting that base here lets the player show each class\'s thumbnail instead of the site logo.';
-$string['mediabase'] = 'Media base (tenant CDN)';
-$string['mediabasedesc'] = 'Base URL of the tenant media (for instance <code>https://d123.cloudfront.net</code>). The poster is built as <code>mediabase/thumbs/Subject/Class.jpg</code>, a static image generated at ingest. <strong>Empty = the site logo as poster</strong>.';
 $string['accessheading'] = 'Course access';
 $string['accessdesc'] = 'By default a video is only playable by users enrolled in the course where it is embedded.';
 $string['requirecourse'] = 'Require course enrolment';

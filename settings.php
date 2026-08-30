@@ -113,27 +113,6 @@ if ($hassiteconfig) {
         '#ffffff'
     ));
 
-    // El media del tenant vive en su propia distribución de CloudFront, y el
-    // plugin no la conoce: hay que decírselo aquí. Con esa base, la URL del
-    // poster es un string determinista y el curso se renderiza sin llamar a la
-    // API (ocho vídeos por página habrían sido ocho llamadas síncronas).
-    // Vacío es un valor válido: deja el logo del sitio como poster, igual que
-    // antes de esta sección.
-    $settings->add(new admin_setting_heading(
-        'filter_impronta/media',
-        get_string('mediaheading', 'filter_impronta'),
-        get_string('mediadesc', 'filter_impronta')
-    ));
-
-    $settings->add(new admin_setting_configtext(
-        'filter_impronta/mediabase',
-        get_string('mediabase', 'filter_impronta'),
-        get_string('mediabasedesc', 'filter_impronta'),
-        '',
-        PARAM_URL,
-        60
-    ));
-
     $settings->add(new admin_setting_heading(
         'filter_impronta/access',
         get_string('accessheading', 'filter_impronta'),

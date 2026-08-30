@@ -39,9 +39,11 @@ class impronta_api {
      * responde 405 MethodNotAllowed, que no se parece en nada a un error de
      * credenciales y despista mucho al diagnosticar.
      *
-     * Ojo: el dominio del MEDIA no se configura en ningún sitio. Viene en cada
-     * respuesta de /moodle/authorize (campo baseurl), así que ya es dinámico por
-     * tenant sin que el plugin sepa nada.
+     * Ojo: el dominio del MEDIA no se configura en ningún sitio a mano. Viene en
+     * cada respuesta de /moodle/authorize (campo baseurl), así que ya es dinámico
+     * por tenant sin que el plugin sepa nada en el play; y en el registro del sitio
+     * (PUT /moodle/site) se guarda oculto para que el poster se construya como
+     * string sin llamar a la API en el render.
      *
      * # Cambiar esto es desplegar el plugin, y ese es el precio a pagar
      *
@@ -489,6 +491,17 @@ class impronta_api {
         if ($curl->get_errno() || $status < 200 || $status >= 300) {
             debugging('filter_impronta: Moodle site registration failed (HTTP ' . $status . ')', DEBUG_NORMAL);
             return false;
+        }
+
+        // El registro trae de regalo el dominio del media del tenant: es el dato
+        // que el poster necesita y que NO puede pedirse en el render de un curso
+        // (serían 8 llamadas síncronas por página). Aquí es estático y de una vez:
+        // si el tenant cambia de CDN, basta volver a registrar el sitio. Se guarda
+        // sin ajuste visible a propósito: no es algo que el administrador deba
+        // poder tocar sin pasar por el registro.
+        $decoded = json_decode((string) $curl->getResponse(), true);
+        if (is_array($decoded) && !empty($decoded['mediaDomain'])) {
+            set_config('mediabase', 'https://' . rtrim((string) $decoded['mediaDomain'], '/'), 'filter_impronta');
         }
         return true;
     }

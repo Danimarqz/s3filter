@@ -29,6 +29,7 @@ $string['registersitedesc'] = 'Después de guardar la API key y el secreto, regi
 $string['registersitebutton'] = 'Registrar sitio Moodle';
 $string['registerneedscredentials'] = 'Guarda arriba la API key y el secreto local de firma para activar el registro.';
 $string['registersuccess'] = 'Este sitio Moodle ya está registrado en Impronta.';
+$string['registermediabase'] = 'Media del tenant: {$a} (guardado al registrar el sitio; si el tenant cambia de CDN, vuelve a registrar el sitio)';
 $string['registerfailure'] = 'No se pudo registrar el sitio Moodle. Comprueba la API key y la conectividad.';
 $string['scormguest'] = 'Los usuarios invitados no pueden reproducir vídeos compartidos. Inicia sesión en Moodle.';
 $string['scormsession'] = 'Este enlace de vídeo compartido pertenece a otra sesión de Moodle. Ábrelo de nuevo desde tu cuenta.';
@@ -41,10 +42,6 @@ $string['mobileusers'] = 'Reproductor in-app (ids de usuario)';
 $string['mobileusersdesc'] = 'Ids de usuario separados por comas que reciben el reproductor dentro de la app de Moodle. <strong>Vacío = todo el mundo</strong>, que es el valor normal; con ids, solo esos usuarios.<br />Ojo: el complemento móvil se sirve a todas las apps conectadas al sitio, así que un fallo aquí no afecta solo a quien abre un vídeo — puede dejar la app sin cargar ningún curso para todo el mundo. Por eso esta lista existe: para acotar la prueba de un cambio a unos pocos usuarios sin exponer a los alumnos.';
 $string['watermarkcolor'] = 'Color del watermark';
 $string['watermarkcolordesc'] = 'Color del texto superpuesto. El blanco por defecto es el que mejor se lee sobre casi cualquier vídeo: cuanto más se parezca el color al de la imagen, menos legible será el watermark si hay que usarlo como prueba.';
-$string['mediaheading'] = 'Media del tenant';
-$string['mediadesc'] = 'El video sale de la distribución de CloudFront del tenant, que no es el dominio de este Moodle. Aquí se indica esa base para que el reproductor pueda enseñar la miniatura de cada clase en lugar del logo del sitio.';
-$string['mediabase'] = 'Base del media (CDN del tenant)';
-$string['mediabasedesc'] = 'URL base del media del tenant (p. ej. <code>https://d123.cloudfront.net</code>). El poster se construye como <code>mediabase/thumbs/Materia/Clase.jpg</code>, una imagen estática generada en la ingesta. <strong>Vacío = logo del sitio como poster</strong>.';
 $string['accessheading'] = 'Acceso por curso';
 $string['accessdesc'] = 'Por defecto un video solo se puede reproducir si el usuario está matriculado en el curso donde está incrustado.';
 $string['requirecourse'] = 'Exigir matrícula en el curso';
