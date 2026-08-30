@@ -30,9 +30,14 @@
     function medir() {
       var caja = el.getBoundingClientRect();
       if (!caja.width || !caja.height) { return null; }
-      // Sin metadatos todavía, 16:9: es lo que mide todo el catálogo.
-      var vw = player.videoWidth() || 16;
-      var vh = player.videoHeight() || 9;
+      // Sin metadatos, 1920x1080: el catalogo entero es 16:9 y las unidades
+      // importan — la escala es pixeles de pantalla por pixel de video, así
+      // que un fallback de 16x9 “pixeles” multiplicaba la fuente x120 y el
+      // watermark salia a ~1200px antes del play (bug del 2026-08-30: mancha
+      // morada que desbordaba el reproductor). El ratio es el mismo; el
+      // tamaño, el real.
+      var vw = player.videoWidth() || 1920;
+      var vh = player.videoHeight() || 1080;
       var escala = Math.min(caja.width / vw, caja.height / vh);
       return {
         ancho: caja.width,

@@ -228,7 +228,12 @@ class player {
 HTML;
         }
 
-        $setupconfig = $isaudio ? ['audioOnlyMode' => true] : ['fluid' => true];
+        $setupconfig = $isaudio ? ['audioOnlyMode' => true]
+            // aspectRatio fija el 16:9 ANTES de los metadatos: sin el, la caja
+            // del reproductor no tiene tamaño estable hasta que el vídeo carga,
+            // y pre-play salta el layout de la página (detectado 2026-08-30).
+            // Con metadatos, video.js la recalcula con el tamaño real.
+            : ['fluid' => true, 'aspectRatio' => '16:9'];
 
         if (!empty($options['playbackrates']) && is_array($options['playbackrates'])) {
             $normalized = [];
