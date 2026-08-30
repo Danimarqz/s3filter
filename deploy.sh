@@ -44,7 +44,19 @@ echo "==> copiando a $HOST:$DEST"
 tar czf - --exclude=.git --exclude=deploy.sh . \
   | ssh "$HOST" "sudo tar xzf - -C $DEST && sudo chown -R daemon:daemon $DEST"
 
+# Reiniciar php-fpm NO es opcional: opcache revalida cada 60 s (revalidate_freq),
+# y un worker que cargó la clase un minuto antes del deploy la sigue sirviendo
+# vieja. Así se degradó el primer deploy del registro: el fichero nuevo en disco,
+# la clase vieja en memoria, y el mediabase sin guardar sin ningún error aparente.
+
 echo "==> version desplegada: $(grep -o '20260[0-9]*' version.php | head -1)"
+
+# Orden: reiniciar ANTES de purgar — el purge limpia MUC, pero si el worker
+# sigue con el PHP viejo, la siguiente petición volvería a reconstruir la caché
+# con el código antiguo.
+echo "==> reiniciando php-fpm (descarga opcache)"
+ssh "$HOST" "sudo -n /opt/bitnami/ctlscript.sh restart php-fpm" \
+  || echo "    AVISO: no pude reiniciar php-fpm; hazlo a mano o espera 60 s" >&2
 
 echo "==> purgando caches de Moodle"
 if ssh "$HOST" "sudo -n $PHP $PURGE_CLI"; then
