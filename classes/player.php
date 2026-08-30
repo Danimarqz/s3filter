@@ -253,8 +253,43 @@ HTML;
         $assetsmarkup = $assets === '' ? '' : $assets . "\n";
         $vjsclass = $isaudio ? '' : ' vjs-fluid filter-impronta-player';
         $vjsstyle = $isaudio ? ' style="width:100%;height:3em"' : '';
-        $poster = $isaudio ? '' : self::poster_url();
+        $poster = $isaudio ? '' : self::poster_url($filename);
         $posterattr = $poster === '' ? '' : ' poster="' . s($poster) . '"';
+
+        // Sonda del poster de reserva (ver poster_fallback_url): el thumb de
+        // una clase pendiente del scan da 404 y la caja se queda gris. No se
+        // escucha el error del <img> que video.js 8 mete dentro de .vjs-poster
+        // porque puede fallar ANTES de que esto corra: se sondea, y si el img
+        // ya esta roto lo delata con naturalWidth === 0. Va en el HTML que se
+        // cachea por vídeo a propósito: poster y logo son idénticos para
+        // cualquier alumno.
+        $posterprobejs = '';
+        if ($poster !== '') {
+            $probejson = json_encode(
+                ['poster' => $poster, 'fallback' => self::poster_fallback_url()],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG
+            );
+            $posterprobejs = <<<JS
+
+// Poster de reserva: si el thumb 404ea, el logo del sitio en su lugar.
+(function() {
+  var cfg = {$probejson};
+  if (!cfg.fallback || cfg.poster === cfg.fallback) { return; }
+  var intentos = 0;
+  (function mira() {
+    var root = document.getElementById('{$escapedid}');
+    var caja = root ? root.closest('.video-js') : null;
+    var img = caja ? caja.querySelector('.vjs-poster img') : null;
+    if (img) {
+      if (img.complete && img.naturalWidth === 0) { img.src = cfg.fallback; return; }
+      img.addEventListener('error', function() { img.src = cfg.fallback; }, {once: true});
+      return;
+    }
+    if (++intentos < 40) { setTimeout(mira, 250); }
+  })();
+})();
+JS;
+        }
 
         $html = <<<HTML
 {$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}{$posterattr}
@@ -267,7 +302,7 @@ document.addEventListener('DOMContentLoaded', function() {
     videojs('{$escapedid}').ready(function() { this.playbackRate(1); });
   }
 });
-</script>
+{$posterprobejs}</script>
 HTML;
 
         if ($cacheable && $assets === '') {
@@ -322,7 +357,11 @@ HTML;
                 $expires, $courseid, $tokenuserid),
             'subject' => impronta_api::subject($tokenuserid),
             'path' => $filename,
-            'poster' => $isaudio ? '' : self::poster_url(),
+            'poster' => $isaudio ? '' : self::poster_url($filename),
+            // El logo por si el thumb del poster da 404: js/app-player.js
+            // cambia la src del <img> del poster si falla. Igual que el
+            // poster, es una URL pública determinista.
+            'posterfallback' => $isaudio ? '' : self::poster_fallback_url(),
             'watermark' => $tokenuserid > 0 ? watermark::label($USER) : '',
             'color' => watermark::color(),
             // El latido de la sesión. Los embeds de solo audio quedan fuera,
@@ -351,11 +390,38 @@ HTML;
     }
 
     /**
-     * URL del logo configurado en el sitio, para usarlo como poster de vídeo.
+     * URL del poster: thumbnail del primer frame si hay mediabase configurada,
+     * logo del sitio si no.
+     *
+     * La URL es determinista y sin firma: el thumb es una imagen generada en la
+     * ingesta y cacheada por CloudFront (1 año) y el navegador (immutable). No
+     * lleva token porque no cubre nada que proteger, y ahí está la diferencia
+     * con la playlist: la query que autoriza la clase entera jamás sale del
+     * servidor. Aquí no hay llamada ni caché: es una construcción de string.
+     *
+     * @param string $filename ruta lógica Materia/Clase
+     * @return string vacío si no hay mediabase y el sitio tampoco tiene logo
+     */
+    private static function poster_url(string $filename): string {
+        $mediabase = rtrim((string) config::get('mediabase', ''), '/');
+        if ($mediabase !== '') {
+            return $mediabase . '/thumbs/' . cloudfront::encode_key($filename) . '.jpg';
+        }
+        return self::poster_fallback_url();
+    }
+
+    /**
+     * Poster de reserva: el logo del sitio.
+     *
+     * Sale por pantalla por dos caminos: sin mediabase configurada, poster_url
+     * cae aquí directamente; y con mediabase pero clase sin thumb todavía —el
+     * scan no la ha generado—, el JS del reproductor vigila el <img> del
+     * poster y, al 404, cambia la src a esta URL. Es una construcción de
+     * string más: sin llamada ni caché nueva.
      *
      * @return string vacío si el sitio no tiene logo
      */
-    private static function poster_url(): string {
+    private static function poster_fallback_url(): string {
         global $OUTPUT;
 
         $logo = $OUTPUT->get_logo_url(600, 120);

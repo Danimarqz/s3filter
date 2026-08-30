@@ -303,6 +303,9 @@
     var cfg = {
       playlist: el.getAttribute('data-impronta-playlist'),
       poster: el.getAttribute('data-impronta-poster'),
+      // El logo por si el poster 404ea (clase pendiente del scan). Con el
+      // mismo valor que poster no hace falta sondear nada.
+      posterfallback: el.getAttribute('data-impronta-posterfallback'),
       events: el.getAttribute('data-impronta-events'),
       subject: el.getAttribute('data-impronta-subject'),
       path: el.getAttribute('data-impronta-path'),
@@ -348,6 +351,24 @@
       });
 
       diag('build:player-creado');
+
+      // Poster de reserva: el thumb de una clase pendiente del scan da 404 y
+      // la caja del poster se queda gris. video.js 8 pinta el poster metiendo
+      // un <img> dentro de .vjs-poster: si esa imagen falla, cambio su src por
+      // el logo del sitio que trae el marcador.
+      var posterimg = player.el() ? player.el().querySelector('.vjs-poster img') : null;
+      if (posterimg && cfg.poster && cfg.posterfallback
+              && cfg.poster !== cfg.posterfallback) {
+        // El error puede haberse perdido antes de llegar aqui (404 cacheado):
+        // un <img> roto lo delata con complete y naturalWidth === 0.
+        if (posterimg.complete && posterimg.naturalWidth === 0) {
+          posterimg.src = cfg.posterfallback;
+        } else {
+          posterimg.addEventListener('error', function() {
+            posterimg.src = cfg.posterfallback;
+          }, {once: true});
+        }
+      }
 
       // Los beacons anteriores solo cuentan que el reproductor se montó. Lo
       // que falla después pasa dentro de video.js, así que se reporta su
