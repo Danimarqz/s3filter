@@ -37,6 +37,8 @@
       return {
         ancho: caja.width,
         alto: caja.height,
+        // Pixeles de pantalla por pixel del fotograma original.
+        escala: escala,
         // Barras negras a cada lado (bx) y arriba y abajo (by).
         bx: Math.max(0, (caja.width - vw * escala) / 2),
         by: Math.max(0, (caja.height - vh * escala) / 2)
@@ -59,6 +61,26 @@
       // las barras negras del WebView sin tocar la caja de Video.js. El UMD es
       // el único que escribe los estilos y puede reafirmarlos ante tampering.
       wm.reposition(g.bx + 24, g.by + 24);
+
+      // FFmpeg dibuja fontsize=24 sobre el fotograma nativo (cmd/watermark),
+      // así que en pantalla esa marca mide 24 * escala. El UMD trae un 11px
+      // fijo, que en pantalla completa queda ridículo. Esto lo ata a la imagen
+      // igual que el del servidor.
+      //
+      // El tamaño se escribe desde aquí y no en el UMD porque watermark.js es
+      // una copia del bundle de otro repo: lo que se cambie ahí se pierde en la
+      // siguiente regeneración (ver docs/adr/0001). Y se puede: font-size no
+      // está entre los estilos que el UMD reafirma, así que no hay pelea.
+      //
+      // El suelo de 11px es el tamaño de antes. Por debajo de eso la marca no
+      // se lee, y una marca que no se lee no identifica a nadie.
+      var px = Math.max(11, Math.round(24 * g.escala)) + 'px';
+      // Se busca por clase en cada pasada porque attach() no devuelve el nodo
+      // y el UMD lo vuelve a montar si alguien lo quita.
+      var marca = el.querySelector('.impronta-watermark');
+      if (marca && marca.style.fontSize !== px) {
+        marca.style.setProperty('font-size', px, 'important');
+      }
     }
 
     // El retardo no es capricho: justo después de rotar o entrar en pantalla
