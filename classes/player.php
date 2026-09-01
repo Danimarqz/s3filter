@@ -20,9 +20,6 @@ defined('MOODLE_INTERNAL') || die();
  */
 class player {
 
-    /** Versión de Video.js que se sirve desde el CDN, en los dos caminos. */
-    const VIDEOJS = '8.16.1';
-
     /**
      * URL de un fichero estático del plugin, con la versión como cache-buster.
      *
@@ -205,12 +202,13 @@ class player {
             // anti-tampering del UMD reafirma display/visibility/opacity, pero no
             // toca color, así que no hay pelea entre los dos.
             $wmcolor = watermark::color();
-            $vjs = self::VIDEOJS;
+            $vjscss = self::asset_url('vendor/video.js/video-js.min.css');
+            $vjsjs = self::asset_url('vendor/video.js/video.min.js');
             $watermarkjs = self::asset_url('watermark.js');
             $fitjs = self::asset_url('js/watermark-fit.js');
             $extrasjs = self::asset_url('js/player-extras.js');
             $assets = <<<HTML
-<link href="https://vjs.zencdn.net/{$vjs}/video-js.css" rel="stylesheet" />
+<link href="{$vjscss}" rel="stylesheet" />
 <style>
 .impronta-watermark { color: {$wmcolor} !important; }
 .filter-impronta-player.video-js { background-color:#f3f4f6; }
@@ -221,7 +219,7 @@ class player {
   background-size:contain;
 }
 </style>
-<script src="https://vjs.zencdn.net/{$vjs}/video.min.js"></script>
+<script src="{$vjsjs}"></script>
 <script src="{$watermarkjs}"></script>
 <script src="{$fitjs}"></script>
 <script src="{$extrasjs}"></script>

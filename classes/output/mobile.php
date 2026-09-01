@@ -57,12 +57,11 @@ class mobile {
         // libreria resuelve el HLS por MSE en Android (el WebView de Chromium
         // no reproduce .m3u8 nativo) y deja un objeto player compatible con
         // el UMD del watermark. Una dependencia en vez de dos.
-        $vjs = player::VIDEOJS;
         $cfg = json_encode([
             'wwwroot' => $CFG->wwwroot,
             'componente' => 'filter_impronta',
-            'videojs' => "https://vjs.zencdn.net/{$vjs}/video.min.js",
-            'videojscss' => "https://vjs.zencdn.net/{$vjs}/video-js.css",
+            'videojs' => player::asset_url('vendor/video.js/video.min.js'),
+            'videojscss' => player::asset_url('vendor/video.js/video-js.min.css'),
             'watermarkjs' => player::asset_url('watermark.js'),
             'watermarkfitjs' => player::asset_url('js/watermark-fit.js'),
         ], JSON_UNESCAPED_SLASHES);
