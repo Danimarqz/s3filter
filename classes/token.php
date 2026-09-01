@@ -89,6 +89,19 @@ class token {
             $payload .= '|scorm|' . $authorizationgroupid . '|' . $playbackid;
         }
 
+        // El playbackid de la INSTANCIA de reproductor (classes/player.php lo
+        // genera por render cuando el filtro no trae uno) se firma aquí en el
+        // modo normal. Sin esta firma, el p= de la URL podría cambiarse por
+        // cualquier copia del enlace y latir por otra sesión; con ella, cada
+        // instancia late la sesión que Impronta abrió para SU playlist y una
+        // recarga ya no roba los latidos de la reproducción anterior
+        // (incidente 2026-08-31). Un token sin playbackid —los ya emitidos—
+        // produce el payload de siempre y sigue validando durante su TTL.
+
+        if ($mode !== 'scorm' && $playbackid !== '') {
+            $payload .= '|p' . $playbackid;
+        }
+
         return hash_hmac('sha256', $payload, $secret);
     }
 
@@ -146,6 +159,13 @@ class token {
             $params['p'] = $playbackid;
             $params['m'] = $mode;
         }
+        // En modo normal el playbackid solo viaja si existe (ver generate():
+        // va firmado dentro del token, y authorize lo reconstruye con lo que
+        // llega por URL). Tokens sin playbackid mantienen URLs sin p, igual
+        // que antes: las paginas abiertas durante el deploy siguen validando.
+        if ($playbackid !== '') {
+            $params['p'] = $playbackid;
+        }
 
         return $CFG->wwwroot . '/filter/impronta/' . $script . '?'
             . http_build_query(array_merge($params, $extra), '', '&', PHP_QUERY_RFC3986);
@@ -193,9 +213,11 @@ class token {
                 return 'tokeninvalid';
             }
             $esapp = false;
-        } else if (self::validate($path, $token, $expires, $courseid, $ip, $userid, false)) {
+        } else if (self::validate($path, $token, $expires, $courseid, $ip, $userid, false,
+                $authorizationgroupid, $playbackid, $mode)) {
             $esapp = false;
-        } else if (self::validate($path, $token, $expires, $courseid, $ip, $userid, true)) {
+        } else if (self::validate($path, $token, $expires, $courseid, $ip, $userid, true,
+                $authorizationgroupid, $playbackid, $mode)) {
             $esapp = true;
         } else {
             return 'tokeninvalid';

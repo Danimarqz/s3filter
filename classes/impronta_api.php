@@ -335,11 +335,19 @@ class impronta_api {
      * resuelve la identidad por los dos caminos -sesión de navegador y token
      * firmado de la app- y no expone el id en la caché.
      *
-     * Es por (alumno, clase) y NO por pestaña: varias pestañas del mismo alumno
-     * comparten entrada, así que solo late la última que abrió el vídeo. Es
-     * deliberado —ver ilter_impronta\player: el recuento de sesiones es
-     * telemetría, no un control de acceso— y no afecta a la reproducción, que
-     * depende del token de segmento y no de la sesión.
+     * Es por (alumno, clase, playbackid). El playbackid lo genera player.php
+     * por render cuando el filtro no trae uno, así que cada instancia de
+     * reproductor guarda y late SU sesión: una recarga del mismo vídeo ya no
+     * roba los latidos de la reproducción anterior.
+     *
+     * Esto dejó de ser solo telemetría cuando la lambda de watermark pasó a
+     * exigir sesión viva: matar la sesión del reproductor en marcha congela el
+     * vídeo en el primer segmento marcado (incidente del 2026-08-31). La
+     * lambda además renueva sesiones caducadas por inactividad con token
+     * válido, así que el peor caso ya no es un vídeo colgado, pero no por eso
+     * hay que volver a compartir clave: la sesión renovada pierde la etiqueta
+     * del watermark y el recuento de sesiones simultáneas deja de tener
+     * sentido.
      *
      * @param string $path
      * @param int $userid

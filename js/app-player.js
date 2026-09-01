@@ -280,7 +280,53 @@
       limpiarTimer();
       flush();
     });
-    player.on('error', function() { flush(); });
+    player.on('error', function() { flush(); recargar(); });
+
+    // --- Vídeo colgado ----------------------------------------------------
+    // http-streaming reintenta los segmentos por debajo y no siempre llega a
+    // montar un error visible: el reproductor queda en waiting para siempre
+    // con la posición congelada (el 2026-08-31 hubo 25 minutos de reintentos
+    // contra un segmento 403 sin que video.js montara su error). Un
+    // reproductor en play que lleva 25 s sin avanzar y sin buscar está
+    // atascado: se recarga la playlist -nueva sesión de reproducción y
+    // nuevas firmas, la posición se restaura- y el latido pasa a renovar la
+    // sesión nueva por su cuenta. Un solo reintento: si la recarga tampoco
+    // reproduce, el siguiente atasco pausa en vez de insistir.
+    var recuperado = false;
+
+    function recargar() {
+      if (recuperado) {
+        try { player.pause(); } catch (e) {}
+        return;
+      }
+      recuperado = true;
+      var pos = 0;
+      try { pos = player.currentTime() || 0; } catch (e) {}
+      var sep = cfg.playlist.indexOf('?') === -1 ? '?' : '&';
+      player.src({src: cfg.playlist + sep + 'cb=' + Date.now(), type: 'application/x-mpegURL'});
+      player.one('playing', function() { recuperado = false; });
+      if (pos > 0) {
+        player.one('loadedmetadata', function() {
+          player.currentTime(pos);
+          player.play();
+        });
+      } else {
+        player.play();
+      }
+    }
+
+    var ultimoProgreso = 0;
+    try { ultimoProgreso = player.currentTime() || 0; } catch (e) {}
+    var atascado = 0;
+    var relojAtasco = setInterval(function() {
+      try {
+        if (terminada || player.paused() || player.seeking()) { atascado = 0; return; }
+        var t = player.currentTime() || 0;
+        if (t !== ultimoProgreso) { atascado = 0; ultimoProgreso = t; return; }
+        atascado += 5;
+        if (atascado >= 25) { atascado = 0; recargar(); }
+      } catch (e) { atascado = 0; }
+    }, 5000);
 
     function alOcultarse() {
       if (document.visibilityState === 'hidden') { flush(); }
@@ -289,6 +335,7 @@
 
     player.on('dispose', function() {
       limpiarTimer();
+      clearInterval(relojAtasco);
       destruida = true;
       flush();
       terminada = true;
@@ -347,6 +394,7 @@
         fluid: true,
         playsinline: true,
         poster: cfg.poster || undefined,
+        'vtt.js': CFG.vttjs,
         sources: [{src: cfg.playlist, type: 'application/x-mpegURL'}]
       });
 

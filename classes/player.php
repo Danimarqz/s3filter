@@ -98,6 +98,26 @@ class player {
         $playbackid = (string) $options['playbackid'];
         $mode = (string) $options['mode'];
 
+        // Identidad de ESTA instancia de reproductor.
+        //
+        // Cuando el filtro no trae uno (SCORM lo pasa, el resto no) se genera
+        // uno por render. La caché de sesión de impronta_api::session_key es
+        // por (alumno, clase, playbackid) y el latido renueva ESA sesión: con
+        // la clave compartida por (alumno, clase), cada recarga del mismo vídeo
+        // robaba los latidos de la reproducción anterior, la sesión moría a los
+        // cinco minutos con el reproductor aún en play, y el primer segmento
+        // marcado recibía un 403 de la lambda de watermark. Vídeo cargado y
+        // colgado a los pocos minutos, en bucle (incidente OpositaTCAE del
+        // 2026-08-31, 665 denegaciones en dos horas). Con un id por render,
+        // cada reproductor late el suyo y una recarga ya no mata a nadie.
+        //
+        // Se genera en PHP y no en JS porque todo el firmado -token HMAC,
+        // playlist.php, heartbeat.php- ocurre aquí; el navegador solo usa URLs
+        // ya firmadas.
+        if ($playbackid === '') {
+            $playbackid = 'r' . bin2hex(random_bytes(8));
+        }
+
         // Identidad de esta reproducción. Se resuelve antes que nada porque la
         // comprobación de matrícula depende de ella: cuando el reproductor lo
         // pinta embed.php abierto desde la app, no hay cookie de sesión y el
@@ -189,7 +209,7 @@ class player {
             $embedurl = token::endpoint_url('embed.php', $filename, $token, $expires, $courseid,
                 $tokenuserid, $isaudio ? ['a' => 1] : [], $authorizationgroupid, $playbackid, $mode);
             return self::app_marker($filename, $playlisturl, $embedurl, $token, $expires,
-                $courseid, $tokenuserid, $isaudio);
+                $courseid, $tokenuserid, $authorizationgroupid, $playbackid, $mode, $isaudio);
         }
 
         $assets = '';
@@ -247,6 +267,10 @@ HTML;
                 $setupconfig['playbackRates'] = $normalized;
             }
         }
+
+        // Video.js carga este polyfill bajo demanda cuando el navegador no
+        // trae WebVTT. Sin ruta explícita vuelve silenciosamente a zencdn.net.
+        $setupconfig['vtt.js'] = self::asset_url('vendor/video.js/vtt/vtt.min.js');
 
         $setupattr = s(json_encode($setupconfig, JSON_UNESCAPED_SLASHES));
         $playlistsrc = s($playlisturl);
@@ -339,12 +363,15 @@ HTML;
      * @param int $expires
      * @param int $courseid
      * @param int $tokenuserid
+     * @param string $authorizationgroupid
+     * @param string $playbackid
+     * @param string $mode
      * @param bool $isaudio
      * @return string
      */
     private static function app_marker(string $filename, string $playlisturl, string $embedurl,
             string $token, int $expires, int $courseid, int $tokenuserid,
-            bool $isaudio): string {
+            string $authorizationgroupid, string $playbackid, string $mode, bool $isaudio): string {
         global $USER;
 
         $buttontext = get_string('openvideo', 'filter_impronta');
@@ -357,7 +384,7 @@ HTML;
         $data = [
             'playlist' => $playlisturl,
             'events' => $isaudio ? '' : token::endpoint_url('events.php', $filename, $token,
-                $expires, $courseid, $tokenuserid),
+                $expires, $courseid, $tokenuserid, [], $authorizationgroupid, $playbackid, $mode),
             'subject' => impronta_api::subject($tokenuserid),
             'path' => $filename,
             'poster' => $isaudio ? '' : self::poster_url($filename),
@@ -370,7 +397,7 @@ HTML;
             // El latido de la sesión. Los embeds de solo audio quedan fuera,
             // igual que la analítica: es un flujo marginal que no merece el JS.
             'session' => $isaudio ? '' : token::endpoint_url('heartbeat.php', $filename, $token,
-                $expires, $courseid, $tokenuserid),
+                $expires, $courseid, $tokenuserid, [], $authorizationgroupid, $playbackid, $mode),
             'revoked' => get_string('accessrevoked', 'filter_impronta'),
             'evicted' => get_string('sessionevicted', 'filter_impronta'),
         ];

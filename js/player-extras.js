@@ -183,6 +183,7 @@ window.ImprontaPlayerExtras = function(cfg) {
 
     player.on('dispose', function() {
       clearInterval(heartbeat);
+      clearInterval(relojAtasco);
       sesionReproduciendo = false;
       if (latidoTimer) { clearTimeout(latidoTimer); latidoTimer = null; }
       var habiaLatidoEnVuelo = latidoEnVuelo;
@@ -227,19 +228,14 @@ window.ImprontaPlayerExtras = function(cfg) {
       el.parentNode.insertBefore(msg, el.nextSibling);
     }
 
-    player.on('error', function() {
-      // Ya se sabe que no hay nada que recuperar: el mensaje esta puesto.
-      if (sesionTerminada) { return; }
+    var recovered = false;
 
-      // Pregunta al servidor por el motivo real. Si es un bloqueo, latir()
-      // para el reproductor y pone el mensaje que toca; el reintento de abajo
-      // no llega a servir de nada porque la playlist nueva daria 403 igual.
-      latir(true);
-
-      if (recovered) {
-        aviso(cfg.expiredText);
-        return;
-      }
+    // Recarga la playlist con cache-buster: playlist.php pide una playlist
+    // nueva a Impronta, con nueva sesion de reproduccion y nuevas firmas de
+    // segmento. La posicion se restaura y el latido (que no conoce el
+    // sessionId: lo recupera heartbeat.php) pasa a renovar la nueva sesion
+    // sin que este JS tenga que saber nada.
+    function recargarPlaylist() {
       recovered = true;
       var pos = player.currentTime() || 0;
       var sep = cfg.playlistUrl.indexOf('?') === -1 ? '?' : '&';
@@ -253,7 +249,50 @@ window.ImprontaPlayerExtras = function(cfg) {
       } else {
         player.play();
       }
+    }
+
+    player.on('error', function() {
+      // Ya se sabe que no hay nada que recuperar: el mensaje esta puesto.
+      if (sesionTerminada) { return; }
+
+      // Pregunta al servidor por el motivo real. Si es un bloqueo, latir()
+      // para el reproductor y pone el mensaje que toca; el reintento de abajo
+      // no llega a servir de nada porque la playlist nueva daria 403 igual.
+      latir(true);
+
+      if (recovered) {
+        aviso(cfg.expiredText);
+        return;
+      }
+      recargarPlaylist();
     });
+
+    // --- Video colgado ----------------------------------------------------
+    // http-streaming reintenta los segmentos por debajo y no siempre llega a
+    // montar un error visible: el reproductor queda en waiting para siempre
+    // con la posicion congelada y los latidos de analitica saliendo a su ritmo
+    // (así se vio el 2026-08-31: 25 minutos de reintentos contra un segmento
+    // 403 sin que video.js montara nunca su error). Un reproductor en play que
+    // lleva 25 s sin avanzar un segundo y sin buscar esta atascado: se recarga
+    // la playlist igual que en la recuperación ante 403.
+    var ultimoProgreso = 0;
+    try { ultimoProgreso = player.currentTime() || 0; } catch (e) {}
+    var atascado = 0;
+    var relojAtasco = setInterval(function() {
+      // En dispose el player ya no responde: cualquier método puede lanzar.
+      try {
+        if (sesionTerminada || player.paused() || player.seeking()) { atascado = 0; return; }
+        var t = player.currentTime() || 0;
+        if (t !== ultimoProgreso) { atascado = 0; ultimoProgreso = t; return; }
+        atascado += 5;
+        if (atascado >= 25) {
+          atascado = 0;
+          if (recovered) { aviso(cfg.expiredText); return; }
+          latir(true);
+          recargarPlaylist();
+        }
+      } catch (e) { atascado = 0; }
+    }, 5000);
 
     if (!cfg.watermarkLabel) { return; }
 

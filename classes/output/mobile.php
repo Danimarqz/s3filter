@@ -62,6 +62,7 @@ class mobile {
             'componente' => 'filter_impronta',
             'videojs' => player::asset_url('vendor/video.js/video.min.js'),
             'videojscss' => player::asset_url('vendor/video.js/video-js.min.css'),
+            'vttjs' => player::asset_url('vendor/video.js/vtt/vtt.min.js'),
             'watermarkjs' => player::asset_url('watermark.js'),
             'watermarkfitjs' => player::asset_url('js/watermark-fit.js'),
         ], JSON_UNESCAPED_SLASHES);
