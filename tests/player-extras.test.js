@@ -11,6 +11,7 @@ function harness(sessionFetch) {
   const timers = new Map();
   const requests = [];
   const listeners = {};
+  const windowListeners = {};
   const element = {parentNode: {insertBefore() {}}};
   const player = {
     handlers: {},
@@ -69,6 +70,10 @@ function harness(sessionFetch) {
     clearInterval(id) { timers.delete(id); },
     Date: {now: () => now},
     console,
+    addEventListener(type, handler) { windowListeners[type] = handler; },
+    removeEventListener(type, handler) {
+      if (windowListeners[type] === handler) delete windowListeners[type];
+    },
   };
   context.window = context;
   vm.runInNewContext(source, context, {filename: 'player-extras.js'});
@@ -103,7 +108,7 @@ function harness(sessionFetch) {
     for (let i = 0; i < 5; i += 1) await Promise.resolve();
   }
 
-  return {player, requests, listeners, document: context.document, advance, settle};
+  return {player, requests, listeners, windowListeners, document: context.document, advance, settle};
 }
 
 function watch(player, seconds) {
@@ -123,6 +128,69 @@ test('sends the first session heartbeat 30 seconds after play', async () => {
   const sessionRequests = h.requests.filter((request) => request.url === '/session');
   assert.equal(sessionRequests.length, 1);
   assert.equal(sessionRequests[0].options.keepalive, true);
+});
+
+test('batches 15-second analytics heartbeats for 90 seconds', async () => {
+  const h = harness();
+  h.player.emit('play');
+  await h.advance(89999);
+  assert.equal(h.requests.filter((request) => request.url === '/events').length, 0);
+
+  await h.advance(1);
+  const eventRequests = h.requests.filter((request) => request.url === '/events');
+  assert.equal(eventRequests.length, 1);
+  assert.equal(eventRequests[0].options.keepalive, true);
+  const batch = JSON.parse(eventRequests[0].options.body);
+  assert.equal(batch.flushReason, 'interval');
+  assert.equal(batch.events.filter((event) => event.type === 'heartbeat').length, 6);
+  assert.equal(batch.events[0].type, 'play');
+});
+
+test('flushes the pending analytics batch when the player is disposed', async () => {
+  const h = harness();
+  h.player.emit('play');
+  await h.advance(30000);
+  h.player.emit('dispose');
+
+  const eventRequests = h.requests.filter((request) => request.url === '/events');
+  assert.equal(eventRequests.length, 1);
+  assert.deepEqual(
+    JSON.parse(eventRequests[0].options.body).events.map((event) => event.type),
+    ['play', 'heartbeat', 'heartbeat'],
+  );
+  assert.equal(JSON.parse(eventRequests[0].options.body).flushReason, 'dispose');
+  assert.equal(h.windowListeners.pagehide, undefined);
+});
+
+test('flushes the pending analytics batch on pagehide', async () => {
+  const h = harness();
+  h.player.emit('play');
+  await h.advance(30000);
+  h.windowListeners.pagehide();
+
+  const eventRequests = h.requests.filter((request) => request.url === '/events');
+  assert.equal(eventRequests.length, 1);
+  assert.deepEqual(
+    JSON.parse(eventRequests[0].options.body).events.map((event) => event.type),
+    ['play', 'heartbeat', 'heartbeat'],
+  );
+  assert.equal(JSON.parse(eventRequests[0].options.body).flushReason, 'pagehide');
+  h.windowListeners.pagehide();
+  assert.equal(h.requests.filter((request) => request.url === '/events').length, 1);
+});
+
+test('labels pause and complete analytics flushes', async () => {
+  const h = harness();
+  h.player.emit('play');
+  await h.advance(15000);
+  h.player.emit('pause');
+  h.player.emit('play');
+  h.player.emit('ended');
+
+  const reasons = h.requests
+    .filter((request) => request.url === '/events')
+    .map((request) => JSON.parse(request.options.body).flushReason);
+  assert.deepEqual(reasons, ['pause', 'complete']);
 });
 
 test('uses the server heartbeat interval and falls back to 120 seconds', async () => {
@@ -212,6 +280,9 @@ test('flushes on hidden and removes the visibility listener on dispose', async (
   h.document.visibilityState = 'hidden';
   h.listeners.visibilitychange();
   await h.settle();
+  const eventRequests = h.requests.filter((request) => request.url === '/events');
+  assert.equal(eventRequests.length, 1);
+  assert.equal(JSON.parse(eventRequests[0].options.body).flushReason, 'hidden');
   assert.equal(h.requests.filter((request) => request.url === '/session').length, 1);
   h.player.emit('dispose');
   assert.equal(h.listeners.visibilitychange, undefined);

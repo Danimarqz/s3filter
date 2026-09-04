@@ -36,33 +36,47 @@ window.ImprontaPlayerExtras = function(cfg) {
 
   function init(player) {
     var queue = [];
+    var analyticsHeartbeats = 0;
+    var analyticsHeartbeatSeconds = cfg.heartbeatSeconds || 15;
+    var analyticsHeartbeatsPerFlush = Math.max(1, Math.ceil(90 / analyticsHeartbeatSeconds));
+    var flushReasons = {
+      interval: true, pause: true, complete: true, hidden: true,
+      pagehide: true, dispose: true, tamper: true
+    };
 
     function push(type, pos) {
       queue.push({videoPath: cfg.videoPath, type: type, positionSeconds: Math.round(pos), ts: Date.now()});
     }
 
-    function flush() {
+    function flush(reason) {
       if (queue.length === 0 || !cfg.eventsUrl) { return; }
+      if (!flushReasons[reason]) { reason = 'interval'; }
       var batch = queue;
       queue = [];
+      analyticsHeartbeats = 0;
       try {
         fetch(cfg.eventsUrl, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({subject: cfg.subject, events: batch}),
+          body: JSON.stringify({subject: cfg.subject, flushReason: reason, events: batch}),
           keepalive: true
         }).catch(function() {});
       } catch (e) {}
     }
 
     player.on('play', function() { push('play', player.currentTime() || 0); });
-    player.on('pause', function() { push('pause', player.currentTime() || 0); flush(); });
+    player.on('pause', function() { push('pause', player.currentTime() || 0); flush('pause'); });
     player.on('seeked', function() { push('seek', player.currentTime() || 0); });
-    player.on('ended', function() { push('complete', player.currentTime() || 0); flush(); });
+    player.on('ended', function() { push('complete', player.currentTime() || 0); flush('complete'); });
 
     var heartbeat = setInterval(function() {
-      if (!player.paused()) { push('heartbeat', player.currentTime() || 0); flush(); }
-    }, (cfg.heartbeatSeconds || 15) * 1000);
+      if (!player.paused()) {
+        push('heartbeat', player.currentTime() || 0);
+        analyticsHeartbeats += 1;
+        // Conserva la resolución de 15 s, pero agrupa 90 s en cada POST.
+        if (analyticsHeartbeats >= analyticsHeartbeatsPerFlush) { flush('interval'); }
+      }
+    }, analyticsHeartbeatSeconds * 1000);
 
     // --- Latido de la sesión de reproducción ------------------------------
     // Distinto del beacon de arriba, que es analítica. Este mantiene viva la
@@ -191,17 +205,24 @@ window.ImprontaPlayerExtras = function(cfg) {
       flushSesion();
       sesionTerminada = true;
       if (!habiaLatidoEnVuelo) { disposePendiente = false; }
-      flush();
+      flush('dispose');
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
     });
 
     function onVisibilityChange() {
       if (document.visibilityState === 'hidden') {
-        flush();
+        flush('hidden');
         flushSesion();
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
+
+    function onPageHide() {
+      flush('pagehide');
+      flushSesion();
+    }
+    window.addEventListener('pagehide', onPageHide);
 
     // --- Recuperacion ante 403 ------------------------------------------
     // Un 403 en un segmento ya no significa solo "la firma caduco": ahora
@@ -310,7 +331,7 @@ window.ImprontaPlayerExtras = function(cfg) {
       tamperLimit: 3,
       onTamper: function(count, position) {
         push('tamper', position);
-        flush();
+        flush('tamper');
       }
     });
 

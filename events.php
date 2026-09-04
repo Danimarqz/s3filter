@@ -65,6 +65,15 @@ if (!is_array($payload)) {
     impronta_events_fail(400);
 }
 
+$flushreasons = ['interval', 'pause', 'complete', 'hidden', 'pagehide', 'dispose', 'tamper'];
+// Los clientes anteriores no enviaban motivo: trátalo como un lote periódico
+// para que una página abierta antes del despliegue no pierda su analítica.
+$flushreason = isset($payload['flushReason']) && is_string($payload['flushReason'])
+    ? $payload['flushReason'] : 'interval';
+if (!in_array($flushreason, $flushreasons, true)) {
+    impronta_events_fail(400);
+}
+
 // El subject es determinista desde el id de usuario y el secret del plugin
 // (impronta_api::subject): recalcularlo aqui e ignorar el del payload,
 // para que el cliente no pueda reportar analitica bajo un identificador
@@ -120,7 +129,6 @@ foreach ($events as $ev) {
         'ts' => isset($ev['ts']) && is_numeric($ev['ts']) ? (int) $ev['ts'] : (int) (microtime(true) * 1000),
         'mode' => $modo,
         'client' => $cliente,
-        'playbackId' => $playbackid,
         'authorizationGroupId' => $authorizationgroupid,
     ];
 }
@@ -128,6 +136,14 @@ foreach ($events as $ev) {
 if (empty($clean)) {
     impronta_events_fail(400);
 }
+
+// La correlación la fija el servidor: los identificadores del JSON del cliente
+// no se leen ni se reenvían. Solo el último evento del lote lleva el marcador.
+$sessionid = impronta_api::recall_session($path, (int) $userid, $playbackid);
+$last = count($clean) - 1;
+$clean[$last]['playbackId'] = $playbackid;
+$clean[$last]['sessionId'] = $sessionid;
+$clean[$last]['flushReason'] = $flushreason;
 
 if (!impronta_api::post_events(['subject' => $subject, 'events' => $clean])) {
     impronta_events_fail(502);
