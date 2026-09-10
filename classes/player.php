@@ -274,6 +274,12 @@ HTML;
 
         $setupattr = s(json_encode($setupconfig, JSON_UNESCAPED_SLASHES));
         $playlistsrc = s($playlisturl);
+        // El URL de la playlist lleva la ruta de la clase, y un nombre con
+        // "</script>" cerraria el bloque del script de abajo. Con JSON_HEX_* no
+        // queda ni un <, ni un >, ni un &, ni una comilla literal.
+        $playlistjson = json_encode($playlisturl,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS);
         $trackshtml = self::tracks_html($filename, $options, $token, $expires, $courseid, $isaudio,
             $authorizationgroupid, $playbackid, $mode, $tokenuserid);
 
@@ -325,9 +331,28 @@ JS;
 {$trackshtml}</video>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  if (typeof videojs !== 'undefined') {
-    videojs('{$escapedid}').ready(function() { this.playbackRate(1); });
-  }
+  if (typeof videojs === 'undefined') { return; }
+  // El id sale solo del nombre de la clase (ver \$escapedid arriba), asi que dos clases
+  // homonimas de materias distintas en la misma pagina comparten player:
+  // videojs(id) devuelve siempre el del primero. Sin esta comprobacion el src()
+  // de abajo le cambiaba la fuente al video equivocado y se rompia tambien el
+  // que venia funcionando. Escaneando el bucket hay 4 ids duplicados: vjs_INTRO
+  // (x4), vjs_TEST1 (x10) y vjs_CLASE-SALUD-LABORAL-0/-2.
+  if (document.querySelectorAll('[id="{$escapedid}"]').length > 1) { return; }
+  var player = videojs('{$escapedid}');
+  // El <source> de arriba lo carga el navegador con SU pila HLS. video.js solo
+  // pasa la fuente por los source handlers (VHS/MSE) cuando alguien llama a
+  // src(), y con el markup solo nunca lo hace: el reproductor arranca en nativo.
+  // La pila nativa no puede con el 302 al /w/ del watermark -la sesion la
+  // mantienen viva los latidos de player-extras.js y el navegador no los
+  // dispara-, asi que se queda colgada hasta que el vigilante de atasco recarga
+  // la playlist a los 25 s. Medido con el video.min.js desplegado (8.16.1):
+  // markup con <source> => tech.vhs undefined y peticiones de tipo "media";
+  // el mismo markup mas este src() => VHS montado y peticiones "xhr".
+  // No fuerza descarga por adelantado: con preload="none" la playlist se pide
+  // al primer play.
+  player.src({src: {$playlistjson}, type: 'application/x-mpegURL'});
+  player.ready(function() { this.playbackRate(1); });
 });
 {$posterprobejs}</script>
 HTML;
@@ -476,8 +501,6 @@ HTML;
     private static function tracks_html(string $filename, array $options, string $token, int $expires,
             int $courseid, bool $isaudio, string $authorizationgroupid = '',
             string $playbackid = '', string $mode = '', int $userid = 0): string {
-        global $CFG;
-
         if ($isaudio || empty($options['subtitles']) || !is_array($options['subtitles'])) {
             return '';
         }
@@ -490,23 +513,13 @@ HTML;
             if (!preg_match('/^[a-z0-9\-]{2,5}$/', $lang)) {
                 continue;
             }
-            $trackparams = [
-                'f' => $filename,
-                'vtt' => $lang,
-                't' => $token,
-                'e' => $expires,
-                'c' => $courseid,
-            ];
-            if ($userid > 0) {
-                $trackparams['u'] = $userid;
-            }
-            if ($mode === 'scorm') {
-                $trackparams['g'] = $authorizationgroupid;
-                $trackparams['p'] = $playbackid;
-                $trackparams['m'] = $mode;
-            }
-            $trackquery = http_build_query($trackparams, '', '&', PHP_QUERY_RFC3986);
-            $trackurl = $CFG->wwwroot . '/filter/impronta/playlist.php?' . $trackquery;
+            // endpoint_url es el unico sitio que sabe que el playbackid viaja
+            // firmado dentro del token tambien en modo normal (adb754b). Aquí se
+            // estaba rehaciendo la query a mano y solo añadía p en scorm, así que
+            // el <track> de subtítulos pedía playlist.php sin p contra un token
+            // que sí lo llevaba firmado: 403 seguro en escritorio y en la app.
+            $trackurl = token::endpoint_url('playlist.php', $filename, $token, $expires,
+                $courseid, $userid, ['vtt' => $lang], $authorizationgroupid, $playbackid, $mode);
             $label = $langnames[$lang] ?? strtoupper($lang);
             $trackshtml .= '  <track kind="subtitles" srclang="' . s($lang) . '" label="' . s($label)
                 . '" src="' . s($trackurl) . "\">\n";
