@@ -119,6 +119,7 @@
     if (!cfg.events || !cfg.subject) { return; }
     var queue = [];
     var timer = null;
+    var heartbeats = 0;
 
     function push(type) {
       var pos = 0;
@@ -129,36 +130,40 @@
         positionSeconds: Math.round(pos),
         ts: Date.now()
       });
-      if (type === 'complete' || queue.length >= 20) { flush(); }
     }
 
-    function flush() {
+    function flush(reason) {
       if (!queue.length) { return; }
       var batch = queue;
       queue = [];
+      heartbeats = 0;
       // events.php reenvía a Impronta server-side con el apikey del tenant: la
       // clave no baja nunca al dispositivo.
       fetch(cfg.events, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({subject: cfg.subject, events: batch}),
+        body: JSON.stringify({subject: cfg.subject, flushReason: reason, events: batch}),
         keepalive: true
       }).catch(function() {});
     }
 
     player.on('play', function() { push('play'); });
-    player.on('pause', function() { push('pause'); });
+    player.on('pause', function() { push('pause'); flush('pause'); });
     player.on('seeked', function() { push('seek'); });
-    player.on('ended', function() { push('complete'); });
+    player.on('ended', function() { push('complete'); flush('complete'); });
     timer = setInterval(function() {
-      if (!player.paused()) { push('heartbeat'); }
+      if (!player.paused()) {
+        push('heartbeat');
+        heartbeats += 1;
+        if (heartbeats >= 6) { flush('interval'); }
+      }
     }, 30000);
+    function onPageHide() { flush('pagehide'); }
+    window.addEventListener('pagehide', onPageHide);
     player.on('dispose', function() {
       if (timer) { clearInterval(timer); }
-      flush();
-    });
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'hidden') { flush(); }
+      flush('dispose');
+      window.removeEventListener('pagehide', onPageHide);
     });
   }
 

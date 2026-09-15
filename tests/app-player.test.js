@@ -12,12 +12,16 @@ function harness(firstResponse) {
   const timers = new Map();
   const requests = [];
   const documentListeners = {};
+  const windowListeners = {};
   const element = {
     attrs: {
       'data-impronta-playlist': '/playlist.m3u8',
       'data-impronta-poster': '/poster.jpg',
       'data-impronta-session': '/session',
-      'data-impronta-watermark': 'student'
+      'data-impronta-watermark': 'student',
+      'data-impronta-events': '/events',
+      'data-impronta-subject': 'student',
+      'data-impronta-path': 'lesson.m3u8'
     },
     getAttribute(name) { return this.attrs[name] || null; },
     setAttribute(name, value) { this.attrs[name] = value; },
@@ -47,15 +51,27 @@ function harness(firstResponse) {
   };
   let videojsOptions;
   const context = {
-    window: {improntaApp: {wwwroot: '', componente: 'impronta', videojscss: '/video.css', videojs: '/video.js'}},
+    window: {
+      improntaApp: {wwwroot: '', componente: 'impronta', videojscss: '/video.css', videojs: '/video.js'},
+      addEventListener(type, handler) { windowListeners[type] = handler; },
+      removeEventListener(type, handler) {
+        if (windowListeners[type] === handler) delete windowListeners[type];
+      }
+    },
     document,
     MutationObserver: function() { this.observe = function() {}; },
     setTimeout(handler, delay) {
       const id = nextTimer++;
-      timers.set(id, {handler, due: now + delay});
+      timers.set(id, {handler, delay, due: now + delay, repeat: false});
       return id;
     },
     clearTimeout(id) { timers.delete(id); },
+    setInterval(handler, delay) {
+      const id = nextTimer++;
+      timers.set(id, {handler, delay, due: now + delay, repeat: true});
+      return id;
+    },
+    clearInterval(id) { timers.delete(id); },
     fetch(url, options) {
       requests.push({url, options});
       if (url === '/session' && requests.filter((r) => r.url === '/session').length === 1) {
@@ -69,6 +85,7 @@ function harness(firstResponse) {
     console
   };
   context.window.window = context.window;
+  context.window.ImprontaWatermarkFit = context.ImprontaWatermarkFit;
   player = {
     handlers: {},
     playing: false,
@@ -82,6 +99,7 @@ function harness(firstResponse) {
     },
     paused() { return !this.playing; },
     currentTime() { return this.position; },
+    el() { return {querySelector() { return null; }}; },
     pause() { this.playing = false; },
     dispose() { this.emit('dispose'); }
   };
@@ -93,7 +111,8 @@ function harness(firstResponse) {
       const due = [...timers.entries()].find(([, timer]) => timer.due <= target);
       if (!due) break;
       now = due[1].due;
-      timers.delete(due[0]);
+      if (due[1].repeat) due[1].due += due[1].delay;
+      else timers.delete(due[0]);
       due[1].handler();
       await settle();
     }
@@ -101,9 +120,9 @@ function harness(firstResponse) {
     await settle();
   }
   async function settle() {
-    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
   }
-  return {player, requests, videojsOptions: () => videojsOptions, advance, settle};
+  return {player, requests, windowListeners, videojsOptions: () => videojsOptions, advance, settle};
 }
 
 test('flushes seconds added while a heartbeat is in flight', async () => {
@@ -127,4 +146,24 @@ test('flushes seconds added while a heartbeat is in flight', async () => {
   const sessions = h.requests.filter((request) => request.url === '/session');
   assert.equal(sessions.length, 2);
   assert.deepEqual(JSON.parse(sessions[1].options.body), {watchedSeconds: 8});
+});
+
+test('batches analytics for three minutes and flushes terminal events', async () => {
+  const h = harness(Promise.resolve({ok: true, json: () => Promise.resolve({heartbeatSeconds: 60})}));
+  await h.settle();
+  h.player.emit('play');
+  await h.advance(179999);
+  assert.equal(h.requests.filter((request) => request.url === '/events').length, 0);
+  await h.advance(1);
+
+  let events = h.requests.filter((request) => request.url === '/events');
+  assert.equal(events.length, 1);
+  assert.equal(JSON.parse(events[0].options.body).flushReason, 'interval');
+  assert.equal(JSON.parse(events[0].options.body).events.filter((event) => event.type === 'heartbeat').length, 6);
+
+  h.player.emit('pause');
+  h.player.emit('play');
+  h.windowListeners.pagehide();
+  events = h.requests.filter((request) => request.url === '/events');
+  assert.deepEqual(events.slice(1).map((request) => JSON.parse(request.options.body).flushReason), ['pause', 'pagehide']);
 });

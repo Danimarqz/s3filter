@@ -38,9 +38,9 @@ window.ImprontaPlayerExtras = function(cfg) {
     var queue = [];
     var analyticsHeartbeats = 0;
     var analyticsHeartbeatSeconds = cfg.heartbeatSeconds || 15;
-    var analyticsHeartbeatsPerFlush = Math.max(1, Math.ceil(90 / analyticsHeartbeatSeconds));
+    var analyticsHeartbeatsPerFlush = Math.max(1, Math.ceil(180 / analyticsHeartbeatSeconds));
     var flushReasons = {
-      interval: true, pause: true, complete: true, hidden: true,
+      interval: true, pause: true, complete: true,
       pagehide: true, dispose: true, tamper: true
     };
 
@@ -73,7 +73,7 @@ window.ImprontaPlayerExtras = function(cfg) {
       if (!player.paused()) {
         push('heartbeat', player.currentTime() || 0);
         analyticsHeartbeats += 1;
-        // Conserva la resolución de 15 s, pero agrupa 90 s en cada POST.
+        // Conserva la resolución de 15 s, pero agrupa 3 min en cada POST.
         if (analyticsHeartbeats >= analyticsHeartbeatsPerFlush) { flush('interval'); }
       }
     }, analyticsHeartbeatSeconds * 1000);
@@ -212,7 +212,6 @@ window.ImprontaPlayerExtras = function(cfg) {
 
     function onVisibilityChange() {
       if (document.visibilityState === 'hidden') {
-        flush('hidden');
         flushSesion();
       }
     }

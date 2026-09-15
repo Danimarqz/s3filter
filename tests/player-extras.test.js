@@ -130,10 +130,10 @@ test('sends the first session heartbeat 30 seconds after play', async () => {
   assert.equal(sessionRequests[0].options.keepalive, true);
 });
 
-test('batches 15-second analytics heartbeats for 90 seconds', async () => {
+test('batches 15-second analytics heartbeats for three minutes', async () => {
   const h = harness();
   h.player.emit('play');
-  await h.advance(89999);
+  await h.advance(179999);
   assert.equal(h.requests.filter((request) => request.url === '/events').length, 0);
 
   await h.advance(1);
@@ -142,7 +142,7 @@ test('batches 15-second analytics heartbeats for 90 seconds', async () => {
   assert.equal(eventRequests[0].options.keepalive, true);
   const batch = JSON.parse(eventRequests[0].options.body);
   assert.equal(batch.flushReason, 'interval');
-  assert.equal(batch.events.filter((event) => event.type === 'heartbeat').length, 6);
+  assert.equal(batch.events.filter((event) => event.type === 'heartbeat').length, 12);
   assert.equal(batch.events[0].type, 'play');
 });
 
@@ -273,7 +273,7 @@ test('flushes seconds added before dispose after the in-flight heartbeat complet
   assert.equal(sessionRequests.length, 2);
 });
 
-test('flushes on hidden and removes the visibility listener on dispose', async () => {
+test('does not flush analytics on hidden and removes the visibility listener on dispose', async () => {
   const h = harness();
   h.player.emit('play');
   watch(h.player, 5);
@@ -281,8 +281,7 @@ test('flushes on hidden and removes the visibility listener on dispose', async (
   h.listeners.visibilitychange();
   await h.settle();
   const eventRequests = h.requests.filter((request) => request.url === '/events');
-  assert.equal(eventRequests.length, 1);
-  assert.equal(JSON.parse(eventRequests[0].options.body).flushReason, 'hidden');
+  assert.equal(eventRequests.length, 0);
   assert.equal(h.requests.filter((request) => request.url === '/session').length, 1);
   h.player.emit('dispose');
   assert.equal(h.listeners.visibilitychange, undefined);
