@@ -47,7 +47,7 @@ $string['accessdesc'] = 'Por defecto un video solo se puede reproducir si el usu
 $string['requirecourse'] = 'Exigir matrícula en el curso';
 $string['requirecoursedesc'] = 'Bloquear la reproducción cuando el video no está incrustado dentro de un curso (o el usuario no está matriculado).';
 $string['bindip'] = 'Vincular tokens a IP';
-$string['bindipdesc'] = 'Añade la IP de la solicitud al payload del token interno para protección extra.';
+$string['bindipdesc'] = 'Vincula a la IP los tokens del navegador. No afecta a la app móvil, que puede cambiar de Wi-Fi a datos.';
 $string['tokenttl'] = 'TTL del token interno (segundos)';
 $string['tokenttldesc'] = 'Cuánto tiempo es válido un token de playlist. Además de cubrir toda la sesión de visionado, debe SOBREVIVIR a la firma de CloudFront de Impronta (TTL = duración de la clase + 30 min, techo de 6 h): la recuperación ante 403 recarga la playlist con este mismo token, y si el token caduca antes que la firma el reintento muere con un 403. El default (7 h = 25200 s) está por encima del techo de la firma; no lo bajes por debajo de él.';
 $string['nocoursecontext'] = 'Este video solo está disponible dentro de un curso.';

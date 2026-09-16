@@ -37,7 +37,10 @@ class token {
         $secret = config::required('secretkey');
         $payload = "{$filename}|{$expires}|{$courseid}";
 
-        if (config::bind_ip()) {
+        // La app cambia de Wi-Fi a datos durante una reproducción; su identidad
+        // ya está firmada y Moodle la revalida al renovar. El ajuste del tenant
+        // sigue protegiendo los tokens del navegador.
+        if (config::bind_ip() && !$esapp) {
             $payload .= "|{$ip}";
         }
 
@@ -126,6 +129,17 @@ class token {
         $expected = self::generate($filename, $expires, $courseid, $ip, $userid, $esapp,
             $authorizationgroupid, $playbackid, $mode);
         return hash_equals($expected, $token);
+    }
+
+    /** Check the signed context for an authenticated renewal, without treating it as playback authorization. */
+    public static function signed_context(string $filename, string $token, int $expires, int $courseid,
+            string $ip, int $userid, bool $esapp, string $authorizationgroupid = '',
+            string $playbackid = '', string $mode = ''): bool {
+        if ($token === '' || $expires <= 0 || $userid <= 0) {
+            return false;
+        }
+        return hash_equals(self::generate($filename, $expires, $courseid, $ip, $userid, $esapp,
+            $authorizationgroupid, $playbackid, $mode), $token);
     }
 
     /**

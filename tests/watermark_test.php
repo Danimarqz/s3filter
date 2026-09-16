@@ -157,6 +157,25 @@ class watermark_test extends \advanced_testcase {
         $this->assertFalse(token::validate($path, $deapp, $expires, 5, $ip, 42, false));
     }
 
+    /** A tenant may bind browser tokens to IP without breaking mobile network changes. */
+    public function test_bindip_only_applies_to_browser_tokens(): void {
+        $this->resetAfterTest();
+        set_config('secretkey', 'un-secreto-de-pruebas', 'filter_impronta');
+        set_config('bindip', 1, 'filter_impronta');
+
+        $path = 'Materia/Clase';
+        $expires = time() + 3600;
+        $wifi = '203.0.113.7';
+        $mobile = '198.51.100.9';
+        $browser = token::generate($path, $expires, 5, $wifi, 42, false);
+        $app = token::generate($path, $expires, 5, $wifi, 42, true);
+
+        $this->assertFalse(token::validate($path, $browser, $expires, 5, $mobile, 42, false));
+        $this->assertTrue(token::validate($path, $app, $expires, 5, $mobile, 42, true));
+        $this->assertTrue(token::signed_context($path, $app, $expires, 5, $mobile, 42, true));
+        $this->assertFalse(token::validate($path, $browser, $expires, 5, $mobile, 42, true));
+    }
+
     /**
      * Los tokens ya emitidos viven horas: si el despliegue los invalidara,
      * cortaría la reproducción a quien esté viendo una clase en ese momento.

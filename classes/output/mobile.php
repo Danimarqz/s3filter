@@ -65,17 +65,25 @@ class mobile {
             'vttjs' => player::asset_url('vendor/video.js/vtt/vtt.min.js'),
             'watermarkjs' => player::asset_url('watermark.js'),
             'watermarkfitjs' => player::asset_url('js/watermark-fit.js'),
+            'renewjs' => player::asset_url('js/playback-renew.js'),
         ], JSON_UNESCAPED_SLASHES);
         $appjs = json_encode(player::asset_url('js/app-player.js'), JSON_UNESCAPED_SLASHES);
 
         $js = <<<JS
 (function() {
+  var sites = this.CoreSitesProvider;
   window.improntaApp = {$cfg};
+  window.improntaApp.renew = function(url) {
+    var site = sites.getCurrentSite();
+    if (!site) { return Promise.reject(new Error('No Moodle site')); }
+    return site.read('filter_impronta_renew', {url: url},
+      {getFromCache: false, saveToCache: false, emergencyCache: false});
+  };
   var s = document.createElement('script');
   s.src = {$appjs};
   s.async = false;
   document.head.appendChild(s);
-})();
+}).call(this);
 JS;
 
         return ['javascript' => $js];

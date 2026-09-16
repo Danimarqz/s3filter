@@ -298,27 +298,39 @@
     // sesión nueva por su cuenta. Un solo reintento: si la recarga tampoco
     // reproduce, el siguiente atasco pausa en vez de insistir.
     var recuperado = false;
+    var renovando = false;
 
     function recargar() {
+      if (!cfg.renew) { try { player.pause(); } catch (e) {} return; }
+      if (renovando) { return; }
       if (recuperado) {
         try { player.pause(); } catch (e) {}
         return;
       }
       recuperado = true;
+      renovando = true;
       var pos = 0;
       try { pos = player.currentTime() || 0; } catch (e) {}
-      var sep = cfg.playlist.indexOf('?') === -1 ? '?' : '&';
-      player.src({src: cfg.playlist + sep + 'cb=' + Date.now(), type: 'application/x-mpegURL'});
-      player.one('playing', function() { recuperado = false; });
-      if (pos > 0) {
-        player.one('loadedmetadata', function() {
-          player.currentTime(pos);
+      cfg.renew().then(function() {
+        renovando = false;
+        player.src({src: cfg.playlistUrl, type: 'application/x-mpegURL'});
+        player.one('playing', function() { recuperado = false; });
+        if (pos > 0) {
+          player.one('loadedmetadata', function() {
+            player.currentTime(pos);
+            player.play();
+          });
+        } else {
           player.play();
-        });
-      } else {
-        player.play();
-      }
+        }
+      }).catch(function() { renovando = false; parar(cfg.expired); });
     }
+
+    function refreshIfExpired() {
+      var match = /[?&]e=(\d+)/.exec(cfg.playlistUrl || '');
+      if (match && Number(match[1]) * 1000 < Date.now() + 60000 && !recuperado) { recargar(); }
+    }
+    player.on('play', refreshIfExpired);
 
     var ultimoProgreso = 0;
     try { ultimoProgreso = player.currentTime() || 0; } catch (e) {}
@@ -337,6 +349,9 @@
       if (document.visibilityState === 'hidden') { flush(); }
     }
     document.addEventListener('visibilitychange', alOcultarse);
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') { refreshIfExpired(); }
+    });
 
     player.on('dispose', function() {
       limpiarTimer();
@@ -365,8 +380,10 @@
       color: el.getAttribute('data-impronta-color'),
       session: el.getAttribute('data-impronta-session'),
       revoked: el.getAttribute('data-impronta-revoked'),
-      evicted: el.getAttribute('data-impronta-evicted')
+      evicted: el.getAttribute('data-impronta-evicted'),
+      expired: el.getAttribute('data-impronta-expired')
     };
+    cfg.playlistUrl = cfg.playlist;
     if (!cfg.playlist) { diag('montar:sin-datos'); return; }
     diag('montar:marcador');
     return build(el, cfg);
@@ -381,7 +398,22 @@
     injectSafeAreaCSS();
 
     diag('build:cargando-videojs');
-    return loadScript(CFG.videojs).then(function() {
+    return loadScript(CFG.renewjs || CFG.videojs).then(function() {
+      if (window.ImprontaPlaybackRenew && CFG.renew) {
+        var renew = window.ImprontaPlaybackRenew(cfg, CFG.renew);
+        cfg.renew = function() { return renew().then(function() {
+          cfg.playlist = cfg.playlistUrl;
+          cfg.events = cfg.eventsUrl;
+          cfg.session = cfg.sessionUrl;
+        }); };
+      }
+      var match = /[?&]e=(\d+)/.exec(cfg.playlistUrl || '');
+      if (match && Number(match[1]) * 1000 < Date.now() + 60000 && cfg.renew) {
+        return cfg.renew();
+      }
+    }).then(function() {
+      return loadScript(CFG.videojs);
+    }).then(function() {
       diag('build:videojs-cargado');
       var video = document.createElement('video');
       video.className = 'video-js vjs-default-skin vjs-fluid';
@@ -400,8 +432,19 @@
         playsinline: true,
         poster: cfg.poster || undefined,
         'vtt.js': CFG.vttjs,
-        sources: [{src: cfg.playlist, type: 'application/x-mpegURL'}]
+        sources: [{src: cfg.playlistUrl, type: 'application/x-mpegURL'}]
       });
+
+      // Conserva el punto de reproducción al cerrar y volver a abrir la app.
+      var positionKey = 'impronta:position:' + cfg.subject + ':' + cfg.path;
+      try {
+        var saved = Number(localStorage.getItem(positionKey));
+        if (saved > 0) { player.one('loadedmetadata', function() { player.currentTime(saved); }); }
+      } catch (e) {}
+      player.on('timeupdate', function() {
+        try { if (player.currentTime() > 0) { localStorage.setItem(positionKey, String(player.currentTime())); } } catch (e) {}
+      });
+      player.on('ended', function() { try { localStorage.removeItem(positionKey); } catch (e) {} });
 
       diag('build:player-creado');
 

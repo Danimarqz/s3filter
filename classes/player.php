@@ -134,22 +134,10 @@ class player {
             return self::notice('notenrolled');
         }
 
-        // La caché de render va por vídeo; todo lo que es de cada alumno
-        // (watermark, subject de analítica) se añade después, en self::extras.
-        $cacheable = empty($options['token']) && empty($options['expires'])
-            && empty($options['forceplayer']);
-        static $rendercache = [];
+        // Signed URLs are per render; caching the markup would reuse stale tokens.
         static $assetsprinted = false;
 
         $ismobileapp = self::is_mobile_app($options['forceplayer']);
-        if ($ismobileapp) {
-            $cacheable = false;
-        }
-        if ($mode === 'scorm') {
-            $cacheable = false;
-        }
-
-        $cachekey = ($isaudio ? 'a:' : 'v:') . $courseid . ':' . $filename;
 
         $escapedid = preg_replace('/[^A-Za-z0-9\-_:.]/', '-', basename($filename));
         $escapedid = 'vjs_' . $escapedid;
@@ -192,13 +180,6 @@ class player {
         // corto). Los embeds de solo audio no emiten extras (ni watermark, ni
         // analitica, ni recuperacion): a proposito, es un flujo marginal que no
         // merece el JS extra.
-        $extrahtml = $isaudio ? '' : self::extras($escapedid, $filename, $token, $expires,
-            $courseid, $playlisturl, $tokenuserid, $authorizationgroupid, $playbackid, $mode);
-
-        if ($cacheable && isset($rendercache[$cachekey])) {
-            return $rendercache[$cachekey] . $extrahtml;
-        }
-
         // Solo la rama de la app: en el navegador el reproductor va inline y no
         // hay nada que abrir aparte.
         //
@@ -211,6 +192,9 @@ class player {
             return self::app_marker($filename, $playlisturl, $embedurl, $token, $expires,
                 $courseid, $tokenuserid, $authorizationgroupid, $playbackid, $mode, $isaudio);
         }
+
+        $extrahtml = $isaudio ? '' : self::extras($escapedid, $filename, $token, $expires,
+            $courseid, $playlisturl, $tokenuserid, $authorizationgroupid, $playbackid, $mode);
 
         $assets = '';
         if (!$assetsprinted) {
@@ -227,6 +211,7 @@ class player {
             $watermarkjs = self::asset_url('watermark.js');
             $fitjs = self::asset_url('js/watermark-fit.js');
             $extrasjs = self::asset_url('js/player-extras.js');
+            $renewjs = self::asset_url('js/playback-renew.js');
             $assets = <<<HTML
 <link href="{$vjscss}" rel="stylesheet" />
 <style>
@@ -242,6 +227,7 @@ class player {
 <script src="{$vjsjs}"></script>
 <script src="{$watermarkjs}"></script>
 <script src="{$fitjs}"></script>
+<script src="{$renewjs}"></script>
 <script src="{$extrasjs}"></script>
 HTML;
         }
@@ -327,7 +313,6 @@ JS;
         $html = <<<HTML
 {$assetsmarkup}<video id="{$escapedid}" class="video-js vjs-default-skin{$vjsclass}"{$vjsstyle}{$posterattr}
        controls preload="none" disablepictureinpicture playsinline data-setup='{$setupattr}'>
-  <source src="{$playlistsrc}" type="application/x-mpegURL">
 {$trackshtml}</video>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -356,10 +341,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 {$posterprobejs}</script>
 HTML;
-
-        if ($cacheable && $assets === '') {
-            $rendercache[$cachekey] = $html;
-        }
 
         return $html . $extrahtml;
     }
@@ -425,6 +406,7 @@ HTML;
                 $expires, $courseid, $tokenuserid, [], $authorizationgroupid, $playbackid, $mode),
             'revoked' => get_string('accessrevoked', 'filter_impronta'),
             'evicted' => get_string('sessionevicted', 'filter_impronta'),
+            'expired' => get_string('sessionexpired', 'filter_impronta'),
         ];
         $attrs = '';
         foreach ($data as $key => $value) {
@@ -568,6 +550,8 @@ HTML;
             'subject' => impronta_api::subject($userid),
             'videoPath' => $filename,
             'playlistUrl' => $playlisturl,
+            'renewUrl' => $mode === 'scorm' ? '' : $GLOBALS['CFG']->wwwroot . '/filter/impronta/renew.php',
+            'sesskey' => sesskey(),
             'expiredText' => s(get_string('sessionexpired', 'filter_impronta')),
             'heartbeatSeconds' => 15,
             // El latido de la SESIÓN, que no es el de la analítica de arriba.

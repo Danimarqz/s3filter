@@ -47,7 +47,7 @@ $string['accessdesc'] = 'By default a video is only playable by users enrolled i
 $string['requirecourse'] = 'Require course enrolment';
 $string['requirecoursedesc'] = 'Block playback when the video is not embedded inside a course (or the user is not enrolled).';
 $string['bindip'] = 'Bind tokens to IP';
-$string['bindipdesc'] = 'Add the requester IP to the internal token payload for extra protection.';
+$string['bindipdesc'] = 'Bind browser tokens to the requester IP. Mobile app tokens remain valid when the network changes.';
 $string['tokenttl'] = 'Internal token TTL (seconds)';
 $string['tokenttldesc'] = 'How long a playlist token stays valid. Besides covering the whole viewing session, it must OUTLIVE the Impronta CloudFront signature (TTL = class duration + 30 min, 6 h ceiling): the 403 recovery reloads the playlist with this same token, and if the token expires before the signature the retry dies with a 403. The default (7 h = 25200 s) sits above the signature ceiling; do not set it below that.';
 $string['nocoursecontext'] = 'This video is only available inside a course.';

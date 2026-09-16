@@ -35,6 +35,23 @@ window.ImprontaPlayerExtras = function(cfg) {
   }
 
   function init(player) {
+    var positionKey = 'impronta:position:' + cfg.subject + ':' + cfg.videoPath;
+    try {
+      var saved = Number(localStorage.getItem(positionKey));
+      if (saved > 0) { player.one('loadedmetadata', function() { player.currentTime(saved); }); }
+    } catch (e) {}
+    player.on('timeupdate', function() {
+      try { if (player.currentTime() > 0) { localStorage.setItem(positionKey, String(player.currentTime())); } } catch (e) {}
+    });
+    player.on('ended', function() { try { localStorage.removeItem(positionKey); } catch (e) {} });
+    var renew = cfg.renewUrl && window.ImprontaPlaybackRenew &&
+      window.ImprontaPlaybackRenew(cfg, function(url) {
+        var form = new FormData();
+        form.append('url', url);
+        form.append('sesskey', cfg.sesskey);
+        return fetch(cfg.renewUrl, {method: 'POST', body: form, credentials: 'same-origin'})
+          .then(function(res) { if (!res.ok) { throw new Error('renew ' + res.status); } return res.json(); });
+      });
     var queue = [];
     var analyticsHeartbeats = 0;
     var analyticsHeartbeatSeconds = cfg.heartbeatSeconds || 15;
@@ -213,6 +230,8 @@ window.ImprontaPlayerExtras = function(cfg) {
     function onVisibilityChange() {
       if (document.visibilityState === 'hidden') {
         flushSesion();
+      } else {
+        refreshIfExpired();
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -235,8 +254,6 @@ window.ImprontaPlayerExtras = function(cfg) {
     // nueva a Impronta), restaurar la posicion y reanudar. recovered se resetea
     // en el primer 'playing' posterior. Si la recarga no llega a reproducir,
     // recovered sigue true y el siguiente error muestra el mensaje explicito.
-    var recovered = false;
-
     function aviso(texto) {
       var el = document.getElementById(targetId);
       if (!el || !texto) { return; }
@@ -249,6 +266,7 @@ window.ImprontaPlayerExtras = function(cfg) {
     }
 
     var recovered = false;
+    var renewing = false;
 
     // Recarga la playlist con cache-buster: playlist.php pide una playlist
     // nueva a Impronta, con nueva sesion de reproduccion y nuevas firmas de
@@ -256,24 +274,39 @@ window.ImprontaPlayerExtras = function(cfg) {
     // sessionId: lo recupera heartbeat.php) pasa a renovar la nueva sesion
     // sin que este JS tenga que saber nada.
     function recargarPlaylist() {
+      if (!renew) { aviso(cfg.expiredText); return; }
+      if (renewing) { return; }
+      renewing = true;
       recovered = true;
       var pos = player.currentTime() || 0;
-      var sep = cfg.playlistUrl.indexOf('?') === -1 ? '?' : '&';
-      player.src({src: cfg.playlistUrl + sep + 'cb=' + Date.now(), type: 'application/x-mpegURL'});
-      player.one('playing', function() { recovered = false; });
-      if (pos > 0) {
-        player.one('loadedmetadata', function() {
-          player.currentTime(pos);
+      renew().then(function() {
+        renewing = false;
+        player.src({src: cfg.playlistUrl, type: 'application/x-mpegURL'});
+        player.one('playing', function() { recovered = false; });
+        if (pos > 0) {
+          player.one('loadedmetadata', function() {
+            player.currentTime(pos);
+            player.play();
+          });
+        } else {
           player.play();
-        });
-      } else {
-        player.play();
+        }
+      }).catch(function() { renewing = false; aviso(cfg.expiredText); });
+    }
+
+    function refreshIfExpired() {
+      var match = /[?&]e=(\d+)/.exec(cfg.playlistUrl || '');
+      if (match && Number(match[1]) * 1000 < Date.now() + 60000 && !recovered) {
+        recargarPlaylist();
       }
     }
+    player.on('play', refreshIfExpired);
+    window.addEventListener('pageshow', refreshIfExpired);
 
     player.on('error', function() {
       // Ya se sabe que no hay nada que recuperar: el mensaje esta puesto.
       if (sesionTerminada) { return; }
+      if (renewing) { return; }
 
       // Pregunta al servidor por el motivo real. Si es un bloqueo, latir()
       // para el reproductor y pone el mensaje que toca; el reintento de abajo
