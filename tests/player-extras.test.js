@@ -118,6 +118,16 @@ function watch(player, seconds) {
   }
 }
 
+function bodyOf(request) {
+  return JSON.parse(request.options.body);
+}
+
+function assertLote(body, watchedSeconds) {
+  assert.equal(body.watchedSeconds, watchedSeconds);
+  assert.equal(typeof body.batchId, 'string');
+  assert.ok(body.batchId.length > 0, 'el lote lleva batchId');
+}
+
 test('sends the first session heartbeat 30 seconds after play', async () => {
   const h = harness();
   assert.equal(h.requests.filter((request) => request.url === '/session').length, 0);
@@ -224,13 +234,31 @@ test('flushes watched seconds on pause and retains them after a failed request',
   await h.settle();
   let sessionRequests = h.requests.filter((request) => request.url === '/session');
   assert.equal(sessionRequests.length, 1);
-  assert.deepEqual(JSON.parse(sessionRequests[0].options.body), {watchedSeconds: 10});
+  assertLote(bodyOf(sessionRequests[0]), 10);
 
   h.player.emit('play');
   await h.advance(120000);
   sessionRequests = h.requests.filter((request) => request.url === '/session');
   assert.equal(sessionRequests.length, 3);
-  assert.deepEqual(JSON.parse(sessionRequests[1].options.body), {watchedSeconds: 10});
+  // Tras un fallo, el reintento reenvía el MISMO lote: mismos segundos y mismo
+  // batchId, para que el backend lo deduplique.
+  assertLote(bodyOf(sessionRequests[1]), 10);
+  assert.equal(bodyOf(sessionRequests[1]).batchId, bodyOf(sessionRequests[0]).batchId);
+});
+
+test('abre un lote nuevo, con batchId distinto, tras confirmar el anterior', async () => {
+  const h = harness();
+  h.player.emit('play');
+  await h.advance(30000);
+  watch(h.player, 5);
+  h.player.emit('pause');
+  await h.settle();
+  h.player.emit('play');
+  await h.advance(120000);
+  const sessionRequests = h.requests.filter((request) => request.url === '/session');
+  assert.equal(sessionRequests.length, 3);
+  assertLote(bodyOf(sessionRequests[1]), 5);
+  assert.notEqual(bodyOf(sessionRequests[1]).batchId, bodyOf(sessionRequests[0]).batchId);
 });
 
 test('does not overlap a heartbeat and flushes seconds added while it is pending', async () => {
@@ -246,7 +274,8 @@ test('does not overlap a heartbeat and flushes seconds added while it is pending
   await h.advance(0);
   const sessionRequests = h.requests.filter((request) => request.url === '/session');
   assert.equal(sessionRequests.length, 2);
-  assert.deepEqual(JSON.parse(sessionRequests[1].options.body), {watchedSeconds: 8});
+  assertLote(bodyOf(sessionRequests[1]), 8);
+  assert.notEqual(bodyOf(sessionRequests[1]).batchId, bodyOf(sessionRequests[0]).batchId);
 });
 
 test('flushes seconds added before dispose after the in-flight heartbeat completes', async () => {
@@ -263,7 +292,7 @@ test('flushes seconds added before dispose after the in-flight heartbeat complet
   await h.settle();
   let sessionRequests = h.requests.filter((request) => request.url === '/session');
   assert.equal(sessionRequests.length, 2);
-  assert.deepEqual(JSON.parse(sessionRequests[1].options.body), {watchedSeconds: 6});
+  assertLote(bodyOf(sessionRequests[1]), 6);
 
   resolvers.shift()({ok: true, json: () => Promise.resolve({heartbeatSeconds: 60})});
   await h.settle();

@@ -85,11 +85,26 @@ if ($sessionid === '') {
 
 $payload = json_decode((string) file_get_contents('php://input'), true);
 $watched = 0;
-if (is_array($payload) && isset($payload['watchedSeconds']) && is_numeric($payload['watchedSeconds'])) {
-    $watched = max(0, (int) $payload['watchedSeconds']);
+$batchid = '';
+if (is_array($payload)) {
+    if (isset($payload['watchedSeconds']) && is_numeric($payload['watchedSeconds'])) {
+        $watched = max(0, (int) $payload['watchedSeconds']);
+    }
+    // Idempotencia de facturación: el mismo lote reenviado no se cuenta dos
+    // veces. Es opaco para el plugin, pero se valida forma y longitud antes de
+    // reenviarlo para no meter basura en el cuerpo hacia la API.
+    if (isset($payload['batchId']) && is_string($payload['batchId'])
+        && preg_match('/^[A-Za-z0-9._-]{1,128}$/', $payload['batchId']) === 1) {
+        $batchid = $payload['batchId'];
+    } elseif (isset($payload['batchId'])) {
+        // Forma invalida: se descarta para no reenviar basura a la API, pero se
+        // deja rastro. Sin esta linea, un cliente con el batchId mal formado
+        // apagaria la idempotencia en silencio y un reintento contaria doble.
+        debugging('filter_impronta: batchId descartado por forma invalida', DEBUG_NORMAL);
+    }
 }
 
-$respuesta = impronta_api::heartbeat($path, (int) $userid, $sessionid, $watched, $authorizationgroupid);
+$respuesta = impronta_api::heartbeat($path, (int) $userid, $sessionid, $watched, $authorizationgroupid, $batchid);
 if ($respuesta === null) {
     // Perder un latido no puede parar la reproducción: el siguiente lo arregla,
     // y si de verdad hay un bloqueo lo corta el propio segmento con un 403.

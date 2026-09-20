@@ -110,6 +110,7 @@ window.ImprontaPlayerExtras = function(cfg) {
     var sesionIniciada = false;
     var sesionReproduciendo = false;
     var latidoEnVuelo = false;
+    var lotePendiente = null;
     var flushPendiente = false;
     var disposePendiente = false;
     var primerLatidoPendiente = true;
@@ -143,17 +144,36 @@ window.ImprontaPlayerExtras = function(cfg) {
       }, despues);
     }
 
+    // Identificador único del lote, con el mismo fallback que la webapp.
+    function nuevoBatchId() {
+      try {
+        if (typeof crypto !== 'undefined' && crypto && typeof crypto.randomUUID === 'function') {
+          return crypto.randomUUID();
+        }
+      } catch (e) {}
+      return 'b' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    }
+
+    // Lote congelado: al latir se fija {enviados, batchId} y, si el servidor no
+    // confirma, el siguiente intento reenvía EXACTAMENTE el mismo lote hasta que
+    // confirme. Los segundos que sigan llegando mientras hay un lote pendiente
+    // no se mezclan: abren el siguiente. Así un reintento tras un ACK perdido
+    // se deduplica en el backend y no se pierde ni se duplica nada.
     function latir(forzado, permitirDispose) {
       if (!cfg.sessionUrl || (sesionTerminada && !permitirDispose) || !sesionIniciada) { return; }
       if (latidoEnVuelo) { flushPendiente = true; return; }
-      var enviados = Math.round(vistos);
-      if (!forzado && enviados <= 0) { return; }
+      if (!lotePendiente) {
+        var iniciales = Math.round(vistos);
+        if (!forzado && iniciales <= 0) { return; }
+        lotePendiente = {enviados: iniciales, batchId: nuevoBatchId()};
+      }
+      var lote = lotePendiente;
       latidoEnVuelo = true;
       Promise.resolve().then(function() {
         return fetch(cfg.sessionUrl, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({watchedSeconds: enviados}),
+          body: JSON.stringify({watchedSeconds: lote.enviados, batchId: lote.batchId}),
           keepalive: true
         });
       }).then(function(res) {
@@ -164,7 +184,8 @@ window.ImprontaPlayerExtras = function(cfg) {
         // Los segundos solo se descuentan si el latido llegó. Perderlos
         // inflaría la proporción de segmentos servidos por minuto visto y
         // acercaría una alerta a un alumno que no ha hecho nada raro.
-        vistos = Math.max(0, vistos - enviados);
+        vistos = Math.max(0, vistos - lote.enviados);
+        lotePendiente = null;
         latidoEnVuelo = false;
         if (r.blocked) { parar(cfg.revokedText); }
         else if (r.evicted) { parar(cfg.evictedText); }
@@ -180,11 +201,12 @@ window.ImprontaPlayerExtras = function(cfg) {
         }
       }).catch(function() {
         latidoEnVuelo = false;
+        // El lote sigue pendiente: el siguiente intento reenvía el mismo.
         if (flushPendiente) {
           flushPendiente = false;
           var permitirDispose = disposePendiente;
           disposePendiente = false;
-          if (Math.round(vistos) > 0) { latir(false, permitirDispose); }
+          if (lotePendiente || Math.round(vistos) > 0) { latir(false, permitirDispose); }
           else { programarLatido(120000); }
         } else {
           programarLatido(120000);

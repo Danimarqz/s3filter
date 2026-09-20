@@ -418,10 +418,15 @@ class impronta_api {
      * @param int $userid usuario firmado en el token (0 = el de la sesión)
      * @param string $sessionid
      * @param int $watched segundos de vídeo consumidos desde el latido anterior
+     * @param string $authorizationgroupid
+     * @param string $batchid identificador idempotente del lote (opcional): el
+     *  cliente lo acuña una vez por latido y lo reutiliza al reintentar, para
+     *  que la facturación de ese lote sea exactamente-una-vez. Sin él,
+     *  at-least-once. Ver el README del backend.
      * @return array|null null si falla
      */
     public static function heartbeat(string $path, int $userid, string $sessionid, int $watched,
-            string $authorizationgroupid = ''): ?array {
+            string $authorizationgroupid = '', string $batchid = ''): ?array {
         global $CFG;
 
         require_once($CFG->libdir . '/filelib.php');
@@ -447,6 +452,9 @@ class impronta_api {
         ];
         if ($authorizationgroupid !== '') {
             $payload['authorizationGroupId'] = $authorizationgroupid;
+        }
+        if ($batchid !== '') {
+            $payload['batchId'] = $batchid;
         }
         $response = $curl->post(rtrim(self::URL, '/') . '/player/heartbeat', json_encode($payload), [
             // Corto a propósito: esto corre cada dos minutos por cada alumno
